@@ -1,0 +1,32 @@
+[package]
+name = "accord"
+version = "0.1.0"
+authors = ["Félix Saparelli <felix@passcod.name>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = "0.2.22"
+tracing-log = "0.1.1"
+tracing = "0.1.18"
+tracing-subscriber = "0.2.10"
+serde = "1.0.114"
+http-types = "2.4.0"
+
+[dependencies.async-std]
+version = "1.6.2"
+features = ["attributes", "tokio02"]
+
+[dependencies.http-client]
+version = "3.0.0"
+features = ["h1_client"]
+
+[dependencies.surf]
+version = "2.0.0-alpha.4"
+default-features = false
+features = ["h1-client", "middleware-logger"]
+
+[dependencies.twilight]
+branch = "trunk"
+git = "https://github.com/twilight-rs/twilight.git"
