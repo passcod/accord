@@ -25,7 +25,8 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 
     let token = env::var("DISCORD_TOKEN")?;
     let target_base = env::var("ACCORD_TARGET")?;
-    let target = Arc::new(raccord::Client::new(target_base));
+    let command_regex = env::var("ACCORD_COMMAND_REGEX").ok();
+    let target = Arc::new(raccord::Client::new(target_base, command_regex));
 
     // This is also the default.
     let scheme = ShardScheme::Auto;
@@ -79,9 +80,11 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 mod raccord {
     use http_client::h1::H1Client as C;
     use http_types::headers::HeaderValue;
+    use regex::Regex;
     use serde::Serialize;
     use std::convert::TryFrom;
     use surf::Request;
+    use tracing::info;
     use twilight::model::{
         channel::{
             embed::Embed,
@@ -98,13 +101,28 @@ mod raccord {
     // TODO: probably need a pool of clients rather than Arcing one?
     pub struct Client {
         base: String,
+        command_regex: Option<Regex>,
         client: surf::Client<C>,
     }
 
     impl Client {
-        pub fn new(base: String) -> Self {
+        pub fn new(base: String, command_regex: Option<String>) -> Self {
             let client = surf::Client::new();
-            Self { base, client }
+            let command_regex = command_regex
+                .as_ref()
+                .map(|s| Regex::new(s).expect("bad regex: ACCORD_COMMAND_REGEX"));
+
+            Self {
+                base,
+                command_regex,
+                client,
+            }
+        }
+
+        pub fn parse_command(&self, content: &str) -> Option<Vec<String>> {
+            self.command_regex.as_ref().map(|rx| rx.captures_iter(content).map(|captures| -> Vec<String> {
+                captures.iter().skip(1).flat_map(|m| m.map(|m| m.as_str().to_string())).collect()
+            }).flatten().collect())
         }
 
         fn add_headers(mut req: Request<C>, headers: Vec<(&str, Vec<String>)>) -> Request<C> {
@@ -122,7 +140,8 @@ mod raccord {
             req
         }
 
-        pub fn post(&self, payload: impl Sendable) -> Request<C> {
+        pub fn post<S: Sendable>(&self, payload: S) -> Request<C> {
+            info!("sending {}", std::any::type_name::<S>());
             Self::add_headers(
                 self.client.post(format!("{}{}", self.base, payload.url())),
                 payload.headers(),
@@ -313,6 +332,19 @@ mod raccord {
             }
         }
     }
+
+    #[derive(Clone, Debug, Serialize)]
+    pub struct Command<M: Sendable> {
+        pub command: Vec<String>,
+        pub context: &'static str,
+        pub message: M,
+    }
+
+    impl<S: Sendable> Sendable for Command<S> {
+        fn url(&self) -> String {
+            format!("/command/{}?context={}", self.command.join("/"), self.context)
+        }
+    }
 }
 
 async fn handle_event(
@@ -322,12 +354,21 @@ async fn handle_event(
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     match event {
         (_, Event::MessageCreate(msg)) => {
-            let mut res = if msg.guild_id.is_some() {
-                target.post(raccord::ServerMessage::from(&**msg))
+            if msg.guild_id.is_some() {
+                let msg = raccord::ServerMessage::from(&**msg);
+                let res = if let Some(command) = target.parse_command(&msg.content) {
+                    target.post(raccord::Command { command, context: "server", message: msg })
+                } else {
+                    target.post(msg)
+                }.await?;
             } else {
-                target.post(raccord::DirectMessage::from(&**msg))
+                let msg = raccord::DirectMessage::from(&**msg);
+                let res = if let Some(command) = target.parse_command(&msg.content) {
+                    target.post(raccord::Command { command, context: "direct", message: msg })
+                } else {
+                    target.post(msg)
+                }.await?;
             }
-            .await?;
 
             //http.create_message(msg.channel_id).content("beep")?.await?;
         }

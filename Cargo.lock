@@ -7,6 +7,7 @@ dependencies = [
  "async-std",
  "http-client",
  "http-types",
+ "regex",
  "serde",
  "surf",
  "tokio",
