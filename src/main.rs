@@ -82,7 +82,7 @@ mod raccord {
     use http_types::headers::HeaderValue;
     use regex::Regex;
     use serde::Serialize;
-    use std::convert::TryFrom;
+    use std::{fmt,convert::TryFrom};
     use surf::Request;
     use tracing::info;
     use twilight::model::{
@@ -128,7 +128,7 @@ mod raccord {
         fn add_headers(mut req: Request<C>, headers: Vec<(&str, Vec<String>)>) -> Request<C> {
             for (name, values) in headers {
                 req = req.set_header(
-                    name,
+                    format!("accord-{}", name).as_str(),
                     values
                         .iter()
                         .map(|v| HeaderValue::try_from(v.as_str()).expect("invalid header value"))
@@ -215,6 +215,20 @@ mod raccord {
         }
     }
 
+    impl fmt::Display for MessageFlag {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            use MessageFlag::*;
+
+            write!(f, "{}", match self {
+                Crossposted => "crossposted",
+                IsCrosspost => "is-crosspost",
+                SuppressEmbeds => "suppress-embeds",
+                SourceMessageDeleted => "source-message-deleted",
+                Urgent => "urgent",
+            })
+        }
+    }
+
     #[derive(Clone, Debug, Serialize)]
     pub struct ServerMessage {
         pub id: u64,
@@ -242,6 +256,35 @@ mod raccord {
                 "/server/{}/channel/{}/message",
                 self.server_id, self.channel_id
             )
+        }
+
+        fn headers(&self) -> Vec<(&str, Vec<String>)> {
+            let mut h = vec![
+                ("message-id", vec![self.id.to_string()]),
+                ("server-id", vec![self.server_id.to_string()]),
+                ("channel-id", vec![self.channel_id.to_string()]),
+                ("author-id", vec![self.author.id.to_string()]),
+                ("author-name", vec![self.author.name.clone()]),
+                ("content-length", vec![self.content.len().to_string()]),
+            ];
+
+            if !self.flags.is_empty() {
+                h.push(("message-flags", self.flags.iter().map(ToString::to_string).collect()));
+            }
+
+            if !self.attachments.is_empty() {
+                h.push(("has-attachments", vec![self.attachments.len().to_string()]));
+            }
+
+            if !self.embeds.is_empty() {
+                h.push(("has-embeds", vec![self.embeds.len().to_string()]));
+            }
+
+            if !self.reactions.is_empty() {
+                h.push(("has-reactions", vec![self.reactions.len().to_string()]));
+            }
+
+            h
         }
     }
 
@@ -303,6 +346,35 @@ mod raccord {
         fn url(&self) -> String {
             format!("/direct/{}/message", self.channel_id)
         }
+
+        fn headers(&self) -> Vec<(&str, Vec<String>)> {
+            let mut h = vec![
+                ("message-id", vec![self.id.to_string()]),
+                ("direct-message", vec!["true".to_string()]),
+                ("channel-id", vec![self.channel_id.to_string()]),
+                ("author-id", vec![self.author.id.to_string()]),
+                ("author-name", vec![self.author.name.clone()]),
+                ("content-length", vec![self.content.len().to_string()]),
+            ];
+
+            if !self.flags.is_empty() {
+                h.push(("message-flags", self.flags.iter().map(ToString::to_string).collect()));
+            }
+
+            if !self.attachments.is_empty() {
+                h.push(("has-attachments", vec![self.attachments.len().to_string()]));
+            }
+
+            if !self.embeds.is_empty() {
+                h.push(("has-embeds", vec![self.embeds.len().to_string()]));
+            }
+
+            if !self.reactions.is_empty() {
+                h.push(("has-reactions", vec![self.reactions.len().to_string()]));
+            }
+
+            h
+        }
     }
 
     impl From<&DisMessage> for DirectMessage {
@@ -336,13 +408,16 @@ mod raccord {
     #[derive(Clone, Debug, Serialize)]
     pub struct Command<M: Sendable> {
         pub command: Vec<String>,
-        pub context: &'static str,
         pub message: M,
     }
 
     impl<S: Sendable> Sendable for Command<S> {
         fn url(&self) -> String {
-            format!("/command/{}?context={}", self.command.join("/"), self.context)
+            format!("/command/{}", self.command.join("/"))
+        }
+
+        fn headers(&self) -> Vec<(&str, Vec<String>)> {
+            self.message.headers()
         }
     }
 }
@@ -357,14 +432,14 @@ async fn handle_event(
             if msg.guild_id.is_some() {
                 let msg = raccord::ServerMessage::from(&**msg);
                 let res = if let Some(command) = target.parse_command(&msg.content) {
-                    target.post(raccord::Command { command, context: "server", message: msg })
+                    target.post(raccord::Command { command, message: msg })
                 } else {
                     target.post(msg)
                 }.await?;
             } else {
                 let msg = raccord::DirectMessage::from(&**msg);
                 let res = if let Some(command) = target.parse_command(&msg.content) {
-                    target.post(raccord::Command { command, context: "direct", message: msg })
+                    target.post(raccord::Command { command, message: msg })
                 } else {
                     target.post(msg)
                 }.await?;

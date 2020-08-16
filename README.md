@@ -48,10 +48,11 @@ you should do instead is run it behind nginx. Why? Let's answer with another few
 
   Scale horizontally, use nginx's round-robin upstream support.
 
-- What if you want to scale *in*, for example because you serve lots of guilds and need to shard,
-  but your backend is perfectly capable of handling the load?
+- What if you want to partially scale *in*, for example because you serve lots of guilds and need to
+  shard for your expensive endpoints, but your cheap endpoints are perfectly capable of handling the
+  load?
 
-  Point your sharded Accords to the same backend server.
+  Point your sharded Accords to their own nginxes, and forward cheap requests to one backend server.
 
 There are many more fairly common scenarios that, in usual Discord bots, would require a lot of
 engineering, but with the Accord approach, **are already solved**.
@@ -59,7 +60,7 @@ engineering, but with the Accord approach, **are already solved**.
 Okay, but, that may work well for query-reply bots, but your bot needs to reply more than once, or
 needs to post spontaneously, for example in response to an external event.
 
-There are three approaches with Accord.
+There are four approaches with Accord.
 
 1. Do the call yourself. Have a Discord client in your app that calls out. Accord doesn't (and
    cannot) stop you from doing this.
@@ -72,6 +73,11 @@ There are three approaches with Accord.
    cause Accord to fire a request in the usual way, as if it was reacting to a message or other
    Discord action, but actually that message or action does not exist. In that way you can
    implement code all the same, and take advantage of the existing layering (cache etc).
+
+4. In the special case of needing to answer multiple times in response to an event, you can respond
+   using chunked output, keep the output stream alive with null bytes sent at 30–60s intervals, and
+   send through multiple payloads separated by at least two null bytes. The payloads will be sent
+   as soon as each one is received.
 
 What if you need to stream some audio to a voice channel?
 
@@ -105,4 +111,12 @@ layers. All that adds is a few tens of milliseconds. What you _gain_ is likely w
 
 ## Why isn't this a thing yet?
 
-Because I have too many other projects on the stove and I'm trying to cut back.
+~~Because I have too many other projects on the stove and I'm trying to cut back.~~
+
+It's happening!
+
+### Common `ACCORD_COMMAND_REGEX`
+
+Use https://rustexp.lpil.uk to play around.
+
+ - `(?:^~|\s+)(\w+)` matches `~command sub command` and routes to `.../command/sub/command...`
