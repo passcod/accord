@@ -120,9 +120,15 @@ mod raccord {
         }
 
         pub fn parse_command(&self, content: &str) -> Option<Vec<String>> {
-            self.command_regex.as_ref().map(|rx| rx.captures_iter(content).map(|captures| -> Vec<String> {
+            self.command_regex.as_ref().and_then(|rx| { let cmd: Vec<String> = rx.captures_iter(content).map(|captures| -> Vec<String> {
                 captures.iter().skip(1).flat_map(|m| m.map(|m| m.as_str().to_string())).collect()
-            }).flatten().collect())
+            }).flatten().collect();
+            if cmd.is_empty() {
+                None
+            } else {
+                Some(cmd)
+            }
+            })
         }
 
         fn add_headers(mut req: Request<C>, headers: Vec<(&str, Vec<String>)>) -> Request<C> {
