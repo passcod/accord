@@ -115,8 +115,18 @@ layers. All that adds is a few tens of milliseconds. What you _gain_ is likely w
 
 It's happening!
 
-### Common `ACCORD_COMMAND_REGEX`
+### `ACCORD_COMMAND_*` regexes
 
 Use https://rustexp.lpil.uk to play around.
 
- - `(?:^~|\s+)(\w+)` matches `~command sub command` and routes to `.../command/sub/command...`
+#### Matchers
+
+Set in `ACCORD_COMMAND_MATCH`. It will be matched only, no capturing:
+
+- `^~\w+` matches `~pizza` and `~ham burger` but not `~!` nor `some plain sentence`
+
+#### Parsers
+
+Set in `ACCORD_COMMAND_PARSE`. It will be run only if the matcher has matched. If the parse regex is not provided, all commands matched by the matcher will be routed to `/command/`. If it is, all captures are collected and joined to the URL:
+
+ - `(?:^~|\s+)(\w+)` parses `~pizza with pineapple` and routes to `/command/pizza/with/pineapple...`

@@ -25,8 +25,13 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 
     let token = env::var("DISCORD_TOKEN")?;
     let target_base = env::var("ACCORD_TARGET")?;
-    let command_regex = env::var("ACCORD_COMMAND_REGEX").ok();
-    let target = Arc::new(raccord::Client::new(target_base, command_regex));
+    let command_match = env::var("ACCORD_COMMAND_MATCH").ok();
+    let command_parse = env::var("ACCORD_COMMAND_PARSE").ok();
+    let target = Arc::new(raccord::Client::new(
+        target_base,
+        command_match,
+        command_parse,
+    ));
 
     // This is also the default.
     let scheme = ShardScheme::Auto;
@@ -101,16 +106,25 @@ mod raccord {
     // TODO: probably need a pool of clients rather than Arcing one?
     pub struct Client {
         base: String,
-        command_regex: Option<Regex>,
+        command_regex: Option<(Regex, Option<Regex>)>,
         client: surf::Client<C>,
     }
 
     impl Client {
-        pub fn new(base: String, command_regex: Option<String>) -> Self {
+        pub fn new(
+            base: String,
+            command_match: Option<String>,
+            command_parse: Option<String>,
+        ) -> Self {
             let client = surf::Client::new();
-            let command_regex = command_regex
+            let command_match_regex = command_match
                 .as_ref()
-                .map(|s| Regex::new(s).expect("bad regex: ACCORD_COMMAND_REGEX"));
+                .map(|s| Regex::new(s).expect("bad regex: ACCORD_COMMAND_MATCH"));
+            let command_parse_regex = command_parse
+                .as_ref()
+                .map(|s| Regex::new(s).expect("bad regex: ACCORD_COMMAND_PARSE"));
+
+            let command_regex = command_match_regex.map(|mx| (mx, command_parse_regex));
 
             Self {
                 base,
@@ -120,22 +134,24 @@ mod raccord {
         }
 
         pub fn parse_command(&self, content: &str) -> Option<Vec<String>> {
-            self.command_regex.as_ref().and_then(|rx| {
-                let cmd: Vec<String> = rx
-                    .captures_iter(content)
-                    .map(|captures| -> Vec<String> {
-                        captures
-                            .iter()
-                            .skip(1)
-                            .flat_map(|m| m.map(|m| m.as_str().to_string()))
-                            .collect()
-                    })
-                    .flatten()
-                    .collect();
-                if cmd.is_empty() {
+            self.command_regex.as_ref().and_then(|(matcher, parser)| {
+                if !matcher.is_match(content) {
                     None
+                } else if let Some(px) = parser {
+                    Some(
+                        px.captures_iter(content)
+                            .map(|captures| -> Vec<String> {
+                                captures
+                                    .iter()
+                                    .skip(1)
+                                    .flat_map(|m| m.map(|m| m.as_str().to_string()))
+                                    .collect()
+                            })
+                            .flatten()
+                            .collect(),
+                    )
                 } else {
-                    Some(cmd)
+                    Some(Vec::new())
                 }
             })
         }
@@ -171,6 +187,17 @@ mod raccord {
 
         fn headers(&self) -> Vec<(&str, Vec<String>)> {
             Vec::new()
+        }
+    }
+
+    #[derive(Clone, Debug, Serialize)]
+    pub struct Connected {
+        pub shard: u64,
+    }
+
+    impl Sendable for Connected {
+        fn url(&self) -> String {
+            "/hello/discord".to_string()
         }
     }
 
@@ -480,8 +507,9 @@ async fn handle_event(
 
             //http.create_message(msg.channel_id).content("beep")?.await?;
         }
-        (id, Event::ShardConnected(_)) => {
-            info!("connected on shard {}", id);
+        (shard, Event::ShardConnected(_)) => {
+            info!("connected on shard {}", shard);
+            let res = target.post(raccord::Connected { shard }).await?;
         }
         _ => {}
     }
