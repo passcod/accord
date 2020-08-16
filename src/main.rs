@@ -99,7 +99,7 @@ mod raccord {
             },
             Attachment,
         },
-        guild::PartialMember,
+        guild::Member as DisMember,
         user::User as DisUser,
     };
 
@@ -220,9 +220,36 @@ mod raccord {
         }
     }
 
-    impl User {
-        pub fn merge_partial_member(&mut self, mem: &PartialMember) {
-            self.roles = Some(mem.roles.iter().map(|role| role.0).collect());
+    #[derive(Clone, Debug, Serialize)]
+    pub struct Member {
+        pub user: User,
+        pub server_id: u64,
+        pub roles: Option<Vec<u64>>,
+        pub pseudonym: Option<String>,
+    }
+
+    impl From<&DisMessage> for Member {
+        fn from(dis: &DisMessage) -> Self {
+            Self {
+                user: User::from(&dis.author),
+                server_id: dis.guild_id.map(|g| g.0).unwrap_or_default(),
+                roles: dis
+                    .member
+                    .as_ref()
+                    .map(|mem| mem.roles.iter().map(|role| role.0).collect()),
+                pseudonym: None,
+            }
+        }
+    }
+
+    impl From<&DisMember> for Member {
+        fn from(dis: &DisMember) -> Self {
+            Self {
+                user: User::from(&dis.user),
+                server_id: dis.guild_id.0,
+                roles: Some(dis.roles.iter().map(|role| role.0).collect()),
+                pseudonym: dis.nick.clone(),
+            }
         }
     }
 
@@ -280,7 +307,7 @@ mod raccord {
         pub id: u64,
         pub server_id: u64,
         pub channel_id: u64,
-        pub author: User,
+        pub author: Member,
 
         pub timestamp_created: String,
         pub timestamp_edited: Option<String>,
@@ -309,10 +336,23 @@ mod raccord {
                 ("message-id", vec![self.id.to_string()]),
                 ("server-id", vec![self.server_id.to_string()]),
                 ("channel-id", vec![self.channel_id.to_string()]),
-                ("author-id", vec![self.author.id.to_string()]),
-                ("author-name", vec![self.author.name.clone()]),
+                ("author-id", vec![self.author.user.id.to_string()]),
+                ("author-name", vec![self.author.user.name.clone()]),
                 ("content-length", vec![self.content.len().to_string()]),
             ];
+
+            if let Some(ref pseud) = self.author.pseudonym {
+                h.push(("author-pseudonym", vec![pseud.clone()]));
+            }
+
+            if let Some(ref roles) = self.author.roles {
+                if !roles.is_empty() {
+                    h.push((
+                        "author-role-ids",
+                        roles.iter().map(|role| role.to_string()).collect(),
+                    ));
+                }
+            }
 
             if !self.flags.is_empty() {
                 h.push((
@@ -344,16 +384,11 @@ mod raccord {
         ///
         /// Will panic if there's no `guild_id`.
         fn from(dis: &DisMessage) -> Self {
-            let mut author = User::from(&dis.author);
-            if let Some(ref member) = dis.member {
-                author.merge_partial_member(member);
-            }
-
             Self {
                 id: dis.id.0,
                 server_id: dis.guild_id.unwrap().0,
                 channel_id: dis.channel_id.0,
-                author: (&dis.author).into(),
+                author: dis.into(),
 
                 timestamp_created: dis.timestamp.clone(),
                 timestamp_edited: dis.edited_timestamp.clone(),
@@ -431,15 +466,10 @@ mod raccord {
 
     impl From<&DisMessage> for DirectMessage {
         fn from(dis: &DisMessage) -> Self {
-            let mut author = User::from(&dis.author);
-            if let Some(ref member) = dis.member {
-                author.merge_partial_member(member);
-            }
-
             Self {
                 id: dis.id.0,
                 channel_id: dis.channel_id.0,
-                author,
+                author: User::from(&dis.author),
 
                 timestamp_created: dis.timestamp.clone(),
                 timestamp_edited: dis.edited_timestamp.clone(),
