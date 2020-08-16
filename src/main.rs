@@ -82,7 +82,7 @@ mod raccord {
     use http_types::headers::HeaderValue;
     use regex::Regex;
     use serde::Serialize;
-    use std::{fmt,convert::TryFrom};
+    use std::{convert::TryFrom, fmt};
     use surf::Request;
     use tracing::info;
     use twilight::model::{
@@ -120,14 +120,23 @@ mod raccord {
         }
 
         pub fn parse_command(&self, content: &str) -> Option<Vec<String>> {
-            self.command_regex.as_ref().and_then(|rx| { let cmd: Vec<String> = rx.captures_iter(content).map(|captures| -> Vec<String> {
-                captures.iter().skip(1).flat_map(|m| m.map(|m| m.as_str().to_string())).collect()
-            }).flatten().collect();
-            if cmd.is_empty() {
-                None
-            } else {
-                Some(cmd)
-            }
+            self.command_regex.as_ref().and_then(|rx| {
+                let cmd: Vec<String> = rx
+                    .captures_iter(content)
+                    .map(|captures| -> Vec<String> {
+                        captures
+                            .iter()
+                            .skip(1)
+                            .flat_map(|m| m.map(|m| m.as_str().to_string()))
+                            .collect()
+                    })
+                    .flatten()
+                    .collect();
+                if cmd.is_empty() {
+                    None
+                } else {
+                    Some(cmd)
+                }
             })
         }
 
@@ -225,13 +234,17 @@ mod raccord {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             use MessageFlag::*;
 
-            write!(f, "{}", match self {
-                Crossposted => "crossposted",
-                IsCrosspost => "is-crosspost",
-                SuppressEmbeds => "suppress-embeds",
-                SourceMessageDeleted => "source-message-deleted",
-                Urgent => "urgent",
-            })
+            write!(
+                f,
+                "{}",
+                match self {
+                    Crossposted => "crossposted",
+                    IsCrosspost => "is-crosspost",
+                    SuppressEmbeds => "suppress-embeds",
+                    SourceMessageDeleted => "source-message-deleted",
+                    Urgent => "urgent",
+                }
+            )
         }
     }
 
@@ -275,7 +288,10 @@ mod raccord {
             ];
 
             if !self.flags.is_empty() {
-                h.push(("message-flags", self.flags.iter().map(ToString::to_string).collect()));
+                h.push((
+                    "message-flags",
+                    self.flags.iter().map(ToString::to_string).collect(),
+                ));
             }
 
             if !self.attachments.is_empty() {
@@ -364,7 +380,10 @@ mod raccord {
             ];
 
             if !self.flags.is_empty() {
-                h.push(("message-flags", self.flags.iter().map(ToString::to_string).collect()));
+                h.push((
+                    "message-flags",
+                    self.flags.iter().map(ToString::to_string).collect(),
+                ));
             }
 
             if !self.attachments.is_empty() {
@@ -438,17 +457,25 @@ async fn handle_event(
             if msg.guild_id.is_some() {
                 let msg = raccord::ServerMessage::from(&**msg);
                 let res = if let Some(command) = target.parse_command(&msg.content) {
-                    target.post(raccord::Command { command, message: msg })
+                    target.post(raccord::Command {
+                        command,
+                        message: msg,
+                    })
                 } else {
                     target.post(msg)
-                }.await?;
+                }
+                .await?;
             } else {
                 let msg = raccord::DirectMessage::from(&**msg);
                 let res = if let Some(command) = target.parse_command(&msg.content) {
-                    target.post(raccord::Command { command, message: msg })
+                    target.post(raccord::Command {
+                        command,
+                        message: msg,
+                    })
                 } else {
                     target.post(msg)
-                }.await?;
+                }
+                .await?;
             }
 
             //http.create_message(msg.channel_id).content("beep")?.await?;
