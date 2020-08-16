@@ -253,6 +253,38 @@ mod raccord {
         }
     }
 
+    #[derive(Clone, Debug, Serialize)]
+    pub struct ServerJoin(pub Member);
+
+    impl Sendable for ServerJoin {
+        fn url(&self) -> String {
+            format!("/server/{}/join/{}", self.0.server_id, self.0.user.id)
+        }
+
+        fn headers(&self) -> Vec<(&str, Vec<String>)> {
+            let mut h = vec![
+                ("server-id", vec![self.0.server_id.to_string()]),
+                ("member-id", vec![self.0.user.id.to_string()]),
+                ("member-name", vec![self.0.user.name.clone()]),
+            ];
+
+            if let Some(ref pseud) = self.0.pseudonym {
+                h.push(("member-pseudonym", vec![pseud.clone()]));
+            }
+
+            if let Some(ref roles) = self.0.roles {
+                if !roles.is_empty() {
+                    h.push((
+                        "member-role-ids",
+                        roles.iter().map(|role| role.to_string()).collect(),
+                    ));
+                }
+            }
+
+            h
+        }
+    }
+
     #[derive(Clone, Copy, Debug, Serialize)]
     pub enum MessageFlag {
         Crossposted,
@@ -536,6 +568,10 @@ async fn handle_event(
             }
 
             //http.create_message(msg.channel_id).content("beep")?.await?;
+        }
+        (_, Event::MemberAdd(mem)) => {
+            let member = raccord::Member::from(&**mem);
+            let res = target.post(raccord::ServerJoin(member)).await?;
         }
         (shard, Event::ShardConnected(_)) => {
             info!("connected on shard {}", shard);
