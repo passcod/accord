@@ -165,28 +165,15 @@ mod raccord {
             })
         }
 
-        fn add_headers(
-            mut req: RequestBuilder,
-            headers: Vec<(&str, Vec<String>)>,
-        ) -> RequestBuilder {
-            for (name, values) in headers {
-                for value in values {
-                    req = req.header(name, value)
-                }
-            }
-
-            req
-        }
-
         pub fn post<S: Sendable>(&self, payload: S) -> ResponseFuture {
             info!("sending {}", std::any::type_name::<S>());
-            let req = Self::add_headers(
-                Request::post(format!("{}{}", self.base, payload.url())),
-                payload.headers(),
-            )
-            .header("content-type", "application/json")
-            .body(serde_json::to_vec(&payload).expect("failed to serialize payload"))
-            .expect("failed to create request");
+            let req = payload
+                .customise(
+                    Request::post(format!("{}{}", self.base, payload.url()))
+                        .header("content-type", "application/json"),
+                )
+                .body(serde_json::to_vec(&payload).expect("failed to serialize payload"))
+                .expect("failed to create request");
             self.client.send_async(req)
         }
     }
@@ -194,8 +181,8 @@ mod raccord {
     pub trait Sendable: Serialize {
         fn url(&self) -> String;
 
-        fn headers(&self) -> Vec<(&str, Vec<String>)> {
-            Vec::new()
+        fn customise(&self, req: RequestBuilder) -> RequestBuilder {
+            req
         }
     }
 
@@ -270,27 +257,23 @@ mod raccord {
             format!("/server/{}/join/{}", self.0.server_id, self.0.user.id)
         }
 
-        fn headers(&self) -> Vec<(&str, Vec<String>)> {
-            let mut h = vec![
-                ("server-id", vec![self.0.server_id.to_string()]),
-                ("member-id", vec![self.0.user.id.to_string()]),
-                ("member-name", vec![self.0.user.name.clone()]),
-            ];
+        fn customise(&self, mut req: RequestBuilder) -> RequestBuilder {
+            req = req
+                .header("accord-server-id", self.0.server_id)
+                .header("accord-member-id", self.0.user.id)
+                .header("accord-member-name", &self.0.user.name);
 
             if let Some(ref pseud) = self.0.pseudonym {
-                h.push(("member-pseudonym", vec![pseud.clone()]));
+                req = req.header("accord-member-pseudonym", pseud);
             }
 
             if let Some(ref roles) = self.0.roles {
-                if !roles.is_empty() {
-                    h.push((
-                        "member-role-ids",
-                        roles.iter().map(|role| role.to_string()).collect(),
-                    ));
+                for role in roles {
+                    req = req.header("accord-member-role-ids", *role);
                 }
             }
 
-            h
+            req
         }
     }
 
@@ -372,53 +355,47 @@ mod raccord {
             )
         }
 
-        fn headers(&self) -> Vec<(&str, Vec<String>)> {
-            let mut h = vec![
-                ("message-id", vec![self.id.to_string()]),
-                ("server-id", vec![self.server_id.to_string()]),
-                ("channel-id", vec![self.channel_id.to_string()]),
-                (
-                    "author-type",
-                    vec![if self.author.user.bot { "bot" } else { "user" }.to_string()],
-                ),
-                ("author-id", vec![self.author.user.id.to_string()]),
-                ("author-name", vec![self.author.user.name.clone()]),
-                ("content-length", vec![self.content.len().to_string()]),
-            ];
+        fn customise(&self, mut req: RequestBuilder) -> RequestBuilder {
+            req = req
+                .header("accord-message-id", self.id)
+                .header("accord-server-id", self.server_id)
+                .header("accord-channel-type", "text")
+                .header("accord-channel-id", self.channel_id)
+                .header(
+                    "accord-author-type",
+                    if self.author.user.bot { "bot" } else { "user" },
+                )
+                .header("accord-author-id", self.author.user.id)
+                .header("accord-author-name", &self.author.user.name)
+                .header("accord-content-length", self.content.len());
 
             if let Some(ref pseud) = self.author.pseudonym {
-                h.push(("author-pseudonym", vec![pseud.clone()]));
+                req = req.header("accord-author-pseudonym", pseud);
             }
 
             if let Some(ref roles) = self.author.roles {
-                if !roles.is_empty() {
-                    h.push((
-                        "author-role-ids",
-                        roles.iter().map(|role| role.to_string()).collect(),
-                    ));
+                for role in roles {
+                    req = req.header("accord-author-role-ids", *role);
                 }
             }
 
-            if !self.flags.is_empty() {
-                h.push((
-                    "message-flags",
-                    self.flags.iter().map(ToString::to_string).collect(),
-                ));
+            for flag in &self.flags {
+                req = req.header("accord-message-flags", flag.to_string());
             }
 
             if !self.attachments.is_empty() {
-                h.push(("has-attachments", vec![self.attachments.len().to_string()]));
+                req = req.header("accord-has-attachments", self.attachments.len());
             }
 
             if !self.embeds.is_empty() {
-                h.push(("has-embeds", vec![self.embeds.len().to_string()]));
+                req = req.header("accord-has-embeds", self.embeds.len());
             }
 
             if !self.reactions.is_empty() {
-                h.push(("has-reactions", vec![self.reactions.len().to_string()]));
+                req = req.header("accord-has-reactions", self.reactions.len());
             }
 
-            h
+            req
         }
     }
 
@@ -476,40 +453,36 @@ mod raccord {
             format!("/direct/{}/message", self.channel_id)
         }
 
-        fn headers(&self) -> Vec<(&str, Vec<String>)> {
-            let mut h = vec![
-                ("message-id", vec![self.id.to_string()]),
-                ("direct-message", vec!["true".to_string()]),
-                ("channel-id", vec![self.channel_id.to_string()]),
-                (
-                    "author-type",
-                    vec![if self.author.bot { "bot" } else { "user" }.to_string()],
-                ),
-                ("author-id", vec![self.author.id.to_string()]),
-                ("author-name", vec![self.author.name.clone()]),
-                ("content-length", vec![self.content.len().to_string()]),
-            ];
+        fn customise(&self, mut req: RequestBuilder) -> RequestBuilder {
+            req = req
+                .header("accord-message-id", self.id)
+                .header("accord-channel-type", "direct")
+                .header("accord-channel-id", self.channel_id)
+                .header(
+                    "accord-author-type",
+                    if self.author.bot { "bot" } else { "user" }.to_string(),
+                )
+                .header("accord-author-id", self.author.id)
+                .header("accord-author-name", &self.author.name)
+                .header("accord-content-length", self.content.len());
 
-            if !self.flags.is_empty() {
-                h.push((
-                    "message-flags",
-                    self.flags.iter().map(ToString::to_string).collect(),
-                ));
+            for flag in &self.flags {
+                req = req.header("accord-message-flags", flag.to_string());
             }
 
             if !self.attachments.is_empty() {
-                h.push(("has-attachments", vec![self.attachments.len().to_string()]));
+                req = req.header("accord-has-attachments", self.attachments.len());
             }
 
             if !self.embeds.is_empty() {
-                h.push(("has-embeds", vec![self.embeds.len().to_string()]));
+                req = req.header("accord-has-embeds", self.embeds.len());
             }
 
             if !self.reactions.is_empty() {
-                h.push(("has-reactions", vec![self.reactions.len().to_string()]));
+                req = req.header("accord-has-reactions", self.reactions.len());
             }
 
-            h
+            req
         }
     }
 
@@ -547,8 +520,8 @@ mod raccord {
             format!("/command/{}", self.command.join("/"))
         }
 
-        fn headers(&self) -> Vec<(&str, Vec<String>)> {
-            self.message.headers()
+        fn customise(&self, req: RequestBuilder) -> RequestBuilder {
+            self.message.customise(req)
         }
     }
 }
