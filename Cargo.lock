@@ -6,6 +6,7 @@ version = "0.1.0"
 dependencies = [
  "async-std",
  "isahc",
+ "mime",
  "regex",
  "serde",
  "serde_json",
@@ -701,6 +702,8 @@ dependencies = [
  "lazy_static",
  "log",
  "mime",
+ "serde",
+ "serde_json",
  "slab",
  "sluice",
  "tracing",

@@ -1,4 +1,5 @@
-use std::{env, error::Error, sync::Arc};
+use isahc::ResponseExt;
+use std::{env, error::Error, str::FromStr, sync::Arc};
 use tokio::stream::StreamExt;
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
@@ -105,7 +106,6 @@ mod raccord {
         user::User as DisUser,
     };
 
-    // TODO: probably need a pool of clients rather than Arcing one?
     pub struct Client {
         base: String,
         command_regex: Option<(Regex, Option<Regex>)>,
@@ -532,9 +532,9 @@ async fn handle_event(
     http: HttpClient,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     match event {
-        (_, Event::MessageCreate(msg)) if msg.guild_id.is_some() => {
-            let msg = raccord::ServerMessage::from(&**msg);
-            let res = if let Some(command) = target.parse_command(&msg.content) {
+        (_, Event::MessageCreate(message)) if message.guild_id.is_some() => {
+            let msg = raccord::ServerMessage::from(&**message);
+            let mut res = if let Some(command) = target.parse_command(&msg.content) {
                 target.post(raccord::Command {
                     command,
                     message: msg,
@@ -560,7 +560,7 @@ async fn handle_event(
                 match status.into() {
                     300 => todo!("multiple choice design"),
                     301 | 302 | 303 | 307 | 308 => {
-                        unreachable!("redirects should be handled by middleware")
+                        unreachable!("redirects should be handled by curl")
                     }
                     304 => todo!("response caching"),
                     305 | 306 => todo!("log(error) proxy redirections as unsupported"),
@@ -576,7 +576,27 @@ async fn handle_event(
                 todo!("log(error) invalid response status");
             }
 
-            // todo
+            let content_type = res
+                .headers()
+                .get("content-type")
+                .and_then(|s| s.to_str().ok())
+                .and_then(|s| mime::Mime::from_str(s).ok())
+                .unwrap_or(mime::APPLICATION_OCTET_STREAM);
+
+            match (content_type.type_(), content_type.subtype()) {
+                (mime::APPLICATION, mime::JSON) => {
+                    // let data: Type = res.json();
+                    todo!("handle json response");
+                }
+                (mime::TEXT, mime::PLAIN) => {
+                    let reply = res.text().expect("todo: log(error) failed to decode text");
+                    http.create_message(message.channel_id)
+                        .content(reply)?
+                        .await?;
+                    // TODO: parse headers and adjust server/channel if needed
+                }
+                (t, s) => todo!("log(warn) unhandled content-type {}/{}", t, s),
+            }
         }
         (_, Event::MessageCreate(msg)) => {
             let msg = raccord::DirectMessage::from(&**msg);
