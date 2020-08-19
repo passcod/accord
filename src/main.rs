@@ -84,11 +84,10 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 
 mod raccord {
     use http_client::h1::H1Client as C;
-    use http_types::headers::HeaderValue;
     use regex::Regex;
     use serde::Serialize;
     use std::{convert::TryFrom, fmt};
-    use surf::Request;
+    use surf::{http_types::headers::HeaderValue, Request};
     use tracing::info;
     use twilight::model::{
         channel::{
@@ -368,6 +367,10 @@ mod raccord {
                 ("message-id", vec![self.id.to_string()]),
                 ("server-id", vec![self.server_id.to_string()]),
                 ("channel-id", vec![self.channel_id.to_string()]),
+                (
+                    "author-type",
+                    vec![if self.author.user.bot { "bot" } else { "user" }.to_string()],
+                ),
                 ("author-id", vec![self.author.user.id.to_string()]),
                 ("author-name", vec![self.author.user.name.clone()]),
                 ("content-length", vec![self.content.len().to_string()]),
@@ -468,6 +471,10 @@ mod raccord {
                 ("message-id", vec![self.id.to_string()]),
                 ("direct-message", vec!["true".to_string()]),
                 ("channel-id", vec![self.channel_id.to_string()]),
+                (
+                    "author-type",
+                    vec![if self.author.bot { "bot" } else { "user" }.to_string()],
+                ),
                 ("author-id", vec![self.author.id.to_string()]),
                 ("author-name", vec![self.author.name.clone()]),
                 ("content-length", vec![self.content.len().to_string()]),
@@ -542,30 +549,63 @@ async fn handle_event(
     http: HttpClient,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     match event {
-        (_, Event::MessageCreate(msg)) => {
-            if msg.guild_id.is_some() {
-                let msg = raccord::ServerMessage::from(&**msg);
-                let res = if let Some(command) = target.parse_command(&msg.content) {
-                    target.post(raccord::Command {
-                        command,
-                        message: msg,
-                    })
-                } else {
-                    target.post(msg)
-                }
-                .await?;
+        (_, Event::MessageCreate(msg)) if msg.guild_id.is_some() => {
+            let msg = raccord::ServerMessage::from(&**msg);
+            let res = if let Some(command) = target.parse_command(&msg.content) {
+                target.post(raccord::Command {
+                    command,
+                    message: msg,
+                })
             } else {
-                let msg = raccord::DirectMessage::from(&**msg);
-                let res = if let Some(command) = target.parse_command(&msg.content) {
-                    target.post(raccord::Command {
-                        command,
-                        message: msg,
-                    })
-                } else {
-                    target.post(msg)
-                }
-                .await?;
+                target.post(msg)
             }
+            .await?;
+
+            dbg!(&res);
+
+            let status = res.status();
+            if status.is_informational() {
+                todo!("log(error) unhandled 1xx code");
+            }
+
+            if status == 204 || status == 404 {
+                // no content, no action
+                return Ok(());
+            }
+
+            if status.is_redirection() {
+                match status.into() {
+                    300 => todo!("multiple choice design"),
+                    301 | 302 | 303 | 307 | 308 => {
+                        unreachable!("redirects should be handled by middleware")
+                    }
+                    304 => todo!("response caching"),
+                    305 | 306 => todo!("log(error) proxy redirections as unsupported"),
+                    _ => todo!("log(error) invalid 3xx code"),
+                }
+            }
+
+            if status.is_client_error() || status.is_server_error() {
+                todo!("http error reporting");
+            }
+
+            if !status.is_success() {
+                todo!("log(error) invalid response status");
+            }
+
+            // todo
+        }
+        (_, Event::MessageCreate(msg)) => {
+            let msg = raccord::DirectMessage::from(&**msg);
+            let res = if let Some(command) = target.parse_command(&msg.content) {
+                target.post(raccord::Command {
+                    command,
+                    message: msg,
+                })
+            } else {
+                target.post(msg)
+            }
+            .await?;
 
             //http.create_message(msg.channel_id).content("beep")?.await?;
         }
