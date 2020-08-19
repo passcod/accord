@@ -83,11 +83,14 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 }
 
 mod raccord {
-    use http_client::h1::H1Client as C;
+    use isahc::{
+        config::{Configurable, RedirectPolicy},
+        http::request::{Builder as RequestBuilder, Request},
+        HttpClient, ResponseFuture,
+    };
     use regex::Regex;
     use serde::Serialize;
-    use std::{convert::TryFrom, fmt};
-    use surf::{http_types::headers::HeaderValue, Request};
+    use std::{fmt, time::Duration};
     use tracing::info;
     use twilight::model::{
         channel::{
@@ -106,7 +109,7 @@ mod raccord {
     pub struct Client {
         base: String,
         command_regex: Option<(Regex, Option<Regex>)>,
-        client: surf::Client<C>,
+        client: HttpClient,
     }
 
     impl Client {
@@ -115,7 +118,14 @@ mod raccord {
             command_match: Option<String>,
             command_parse: Option<String>,
         ) -> Self {
-            let client = surf::Client::new();
+            let client = HttpClient::builder()
+                .default_header("accord-version", env!("CARGO_PKG_VERSION"))
+                .redirect_policy(RedirectPolicy::Limit(8))
+                .auto_referer()
+                .tcp_keepalive(Duration::from_secs(15))
+                .tcp_nodelay()
+                .build()
+                .expect("failed to create http client");
             let command_match_regex = command_match
                 .as_ref()
                 .map(|s| Regex::new(s).expect("bad regex: ACCORD_COMMAND_MATCH"));
@@ -155,29 +165,29 @@ mod raccord {
             })
         }
 
-        fn add_headers(mut req: Request<C>, headers: Vec<(&str, Vec<String>)>) -> Request<C> {
+        fn add_headers(
+            mut req: RequestBuilder,
+            headers: Vec<(&str, Vec<String>)>,
+        ) -> RequestBuilder {
             for (name, values) in headers {
-                req = req.set_header(
-                    format!("accord-{}", name).as_str(),
-                    values
-                        .iter()
-                        .map(|v| HeaderValue::try_from(v.as_str()).expect("invalid header value"))
-                        .collect::<Vec<HeaderValue>>()
-                        .as_slice(),
-                );
+                for value in values {
+                    req = req.header(name, value)
+                }
             }
 
             req
         }
 
-        pub fn post<S: Sendable>(&self, payload: S) -> Request<C> {
+        pub fn post<S: Sendable>(&self, payload: S) -> ResponseFuture {
             info!("sending {}", std::any::type_name::<S>());
-            Self::add_headers(
-                self.client.post(format!("{}{}", self.base, payload.url())),
+            let req = Self::add_headers(
+                Request::post(format!("{}{}", self.base, payload.url())),
                 payload.headers(),
             )
-            .body_json(&payload)
-            .expect("failed to serialize payload")
+            .header("content-type", "application/json")
+            .body(serde_json::to_vec(&payload).expect("failed to serialize payload"))
+            .expect("failed to create request");
+            self.client.send_async(req)
         }
     }
 
