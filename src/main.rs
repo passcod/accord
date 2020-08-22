@@ -90,7 +90,7 @@ mod raccord {
         HttpClient, ResponseFuture,
     };
     use regex::Regex;
-    use serde::Serialize;
+    use serde::{Deserialize, Serialize};
     use std::{fmt, time::Duration};
     use tracing::info;
     use twilight::model::{
@@ -524,6 +524,23 @@ mod raccord {
             self.message.customise(req)
         }
     }
+
+    #[derive(Clone, Debug, Deserialize)]
+    #[serde(rename_all = "kebab-case")]
+    pub enum Act {
+        CreateMessage {
+            content: String,
+            channel_id: Option<u64>,
+        },
+        AssignRole {
+            role_id: u64,
+            user_id: u64,
+        },
+        RemoveRole {
+            role_id: u64,
+            user_id: u64,
+        },
+    }
 }
 
 async fn handle_event(
@@ -585,8 +602,27 @@ async fn handle_event(
 
             match (content_type.type_(), content_type.subtype()) {
                 (mime::APPLICATION, mime::JSON) => {
-                    // let data: Type = res.json();
-                    todo!("handle json response");
+                    let act: raccord::Act = res.json()?;
+                    let default_channel_id = res
+                        .headers()
+                        .get("accord-channel-id")
+                        .and_then(|h| h.to_str().ok())
+                        .and_then(|s| u64::from_str(s).ok())
+                        .map(ChannelId)
+                        .unwrap_or(message.channel_id);
+
+                    dbg!(&act);
+                    match act {
+                        raccord::Act::CreateMessage {
+                            content,
+                            channel_id,
+                        } => {
+                            let channel_id =
+                                channel_id.map(ChannelId).unwrap_or(default_channel_id);
+                            http.create_message(channel_id).content(content)?.await?;
+                        }
+                        _ => todo!("handle other acts"),
+                    }
                 }
                 (mime::TEXT, mime::PLAIN) => {
                     let reply = res.text().expect("todo: log(error) failed to decode text");
