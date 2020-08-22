@@ -13,7 +13,10 @@ use twilight::{
         Event,
     },
     http::Client as HttpClient,
-    model::{gateway::GatewayIntents, id::ChannelId},
+    model::{
+        gateway::GatewayIntents,
+        id::{ChannelId, RoleId, UserId},
+    },
 };
 
 #[async_std::main]
@@ -535,10 +538,12 @@ mod raccord {
         AssignRole {
             role_id: u64,
             user_id: u64,
+            reason: Option<String>,
         },
         RemoveRole {
             role_id: u64,
             user_id: u64,
+            reason: Option<String>,
         },
     }
 }
@@ -620,6 +625,36 @@ async fn handle_event(
                             let channel_id =
                                 channel_id.map(ChannelId).unwrap_or(default_channel_id);
                             http.create_message(channel_id).content(content)?.await?;
+                        }
+                        raccord::Act::AssignRole {
+                            role_id,
+                            user_id,
+                            reason,
+                        } => {
+                            let mut add = http.add_role(
+                                message.guild_id.unwrap(),
+                                UserId(user_id),
+                                RoleId(role_id),
+                            );
+                            if let Some(text) = reason {
+                                add = add.reason(text);
+                            }
+                            add.await?;
+                        }
+                        raccord::Act::RemoveRole {
+                            role_id,
+                            user_id,
+                            reason,
+                        } => {
+                            let mut add = http.remove_guild_member_role(
+                                message.guild_id.unwrap(),
+                                UserId(user_id),
+                                RoleId(role_id),
+                            );
+                            if let Some(text) = reason {
+                                add = add.reason(text);
+                            }
+                            add.await?;
                         }
                         _ => todo!("handle other acts"),
                     }
