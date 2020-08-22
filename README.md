@@ -25,7 +25,7 @@ Discord that your bot can see.
 | `MessageCreate` (from a guild) | `POST /server/{guild-id}/channel/{channel-id}/message` | [`Message`](#payload-type-message) | [`text/plain` reply content](#response-text-reply), [`application/json` acts](#response-json-acts) |
 | `MessageCreate` (from a DM) | `POST /direct/{channel-id}/message` | [`Message`](#payload-type-message) | [`text/plain` reply content](#response-text-reply), [`application/json` acts](#response-json-acts) |
 | `MessageCreate` (matching command regex) | `POST /command/{command...}` | [`Command`](#payload-type-command) | [`text/plain` reply content](#response-text-reply), [`application/json` acts](#response-json-acts) |
-| `MemberAdd` | `POST /server/{guild-id}/join/{user-id}` | [`application/json` acts](#response-json-acts) |
+| `MemberAdd` | `POST /server/{guild-id}/join/{user-id}` | [`Member`](#payload-type-member) | [`application/json` acts](#response-json-acts) |
 | `ShardConnected` | `POST /discord/connected` | [`Connected`](#payload-type-connected) | [`application/json` acts](#response-json-acts) |
 | _before a connection is made_ | `GET /discord/connecting` | none | [`application/json` presence](#response-json-presence) |
 
