@@ -9,12 +9,16 @@ use twilight::{
         InMemoryCache,
     },
     gateway::{
-        cluster::{config::ShardScheme, Cluster, ClusterConfig},
+        cluster::{Cluster, ClusterConfig},
         Event,
     },
     http::Client as HttpClient,
     model::{
-        gateway::GatewayIntents,
+        gateway::{
+            payload::update_status::UpdateStatusInfo,
+            presence::{Activity, ActivityType, Status},
+            GatewayIntents,
+        },
         id::{ChannelId, GuildId, RoleId, UserId},
     },
 };
@@ -37,19 +41,69 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         command_parse,
     ));
 
-    // This is also the default.
-    let scheme = ShardScheme::Auto;
+    let mut connecting_res = target.get(raccord::Connecting).await?;
+    dbg!(&connecting_res);
 
-    let config = ClusterConfig::builder(&token)
-        .shard_scheme(scheme)
-        // Use intents to only listen to GUILD_MESSAGES events
-        .intents(Some(
-            GatewayIntents::GUILD_MESSAGES | GatewayIntents::DIRECT_MESSAGES,
-        ))
-        .build();
+    let mut update_status = None;
+    if connecting_res.status().is_success() {
+        let content_type = connecting_res
+            .headers()
+            .get("content-type")
+            .and_then(|s| s.to_str().ok())
+            .and_then(|s| mime::Mime::from_str(s).ok())
+            .unwrap_or(mime::APPLICATION_OCTET_STREAM);
+
+        if content_type == mime::APPLICATION_JSON {
+            let presence: raccord::Presence = connecting_res.json()?;
+
+            update_status = Some(UpdateStatusInfo {
+                afk: presence.afk.unwrap_or(true),
+                since: presence.since,
+                status: presence.status.unwrap_or(Status::Online),
+                game: presence.activity.map(|activity| {
+                    let (kind, name) = match activity {
+                        raccord::Activity::Playing { name } => (ActivityType::Playing, name),
+                        raccord::Activity::Streaming { name } => (ActivityType::Streaming, name),
+                        raccord::Activity::Listening { name } => (ActivityType::Listening, name),
+                        raccord::Activity::Watching { name } => (ActivityType::Watching, name),
+                        raccord::Activity::Custom { name } => (ActivityType::Custom, name),
+                    };
+
+                    Activity {
+                        application_id: None,
+                        assets: None,
+                        created_at: None,
+                        details: None,
+                        emoji: None,
+                        flags: None,
+                        id: None,
+                        instance: None,
+                        party: None,
+                        secrets: None,
+                        state: None,
+                        timestamps: None,
+                        url: None,
+                        kind,
+                        name,
+                    }
+                }),
+            });
+        }
+    }
+
+    // TODO: env var control for intents (notably for privileged intents)
+    let mut config = ClusterConfig::builder(&token).intents(Some(
+        GatewayIntents::DIRECT_MESSAGES
+            | GatewayIntents::GUILD_MESSAGES
+            | GatewayIntents::GUILD_MEMBERS,
+    ));
+
+    if let Some(presence) = update_status {
+        config = config.presence(presence);
+    }
 
     // Start up the cluster
-    let cluster = Cluster::new(config).await?;
+    let cluster = Cluster::new(config.build()).await?;
 
     let cluster_spawn = cluster.clone();
 
@@ -68,7 +122,11 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
             EventType::MESSAGE_CREATE
                 | EventType::MESSAGE_DELETE
                 | EventType::MESSAGE_DELETE_BULK
-                | EventType::MESSAGE_UPDATE,
+                | EventType::MESSAGE_UPDATE
+                | EventType::MEMBER_ADD
+                | EventType::MEMBER_CHUNK
+                | EventType::MEMBER_UPDATE
+                | EventType::MEMBER_REMOVE,
         )
         .build();
     let cache = InMemoryCache::from(cache_config);
@@ -105,6 +163,7 @@ mod raccord {
             },
             Attachment,
         },
+        gateway::presence::Status,
         guild::Member as DisMember,
         user::User as DisUser,
     };
@@ -168,6 +227,18 @@ mod raccord {
             })
         }
 
+        pub fn get<S: Sendable>(&self, payload: S) -> ResponseFuture {
+            info!("sending {}", std::any::type_name::<S>());
+            let req = payload
+                .customise(
+                    Request::get(format!("{}{}", self.base, payload.url()))
+                        .header("content-type", "application/json"),
+                )
+                .body(())
+                .expect("failed to create request");
+            self.client.send_async(req)
+        }
+
         pub fn post<S: Sendable>(&self, payload: S) -> ResponseFuture {
             info!("sending {}", std::any::type_name::<S>());
             let req = payload
@@ -190,13 +261,41 @@ mod raccord {
     }
 
     #[derive(Clone, Debug, Serialize)]
+    pub struct Connecting;
+
+    impl Sendable for Connecting {
+        fn url(&self) -> String {
+            "/discord/connecting".to_string()
+        }
+    }
+
+    #[derive(Clone, Debug, Deserialize)]
+    #[serde(rename_all = "kebab-case")]
+    pub enum Activity {
+        Playing { name: String },
+        Streaming { name: String },
+        Listening { name: String },
+        Watching { name: String },
+        Custom { name: String },
+    }
+
+    #[derive(Clone, Debug, Deserialize)]
+    #[serde(rename_all = "kebab-case")]
+    pub struct Presence {
+        pub afk: Option<bool>,
+        pub activity: Option<Activity>,
+        pub since: Option<u64>,
+        pub status: Option<Status>,
+    }
+
+    #[derive(Clone, Debug, Serialize)]
     pub struct Connected {
         pub shard: u64,
     }
 
     impl Sendable for Connected {
         fn url(&self) -> String {
-            "/hello/discord".to_string()
+            "/discord/connected".to_string()
         }
     }
 
