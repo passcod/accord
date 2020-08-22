@@ -1,6 +1,4 @@
-# Accord
-
-![Accord logo](./res/pitch.png)
+# ![Accord](./res/pitch.png)
 
 - Status: alpha, not production ready (on account of the large number of non-critical errors that panic instead of logging)
 - Releases: none, build from source from `main` branch
