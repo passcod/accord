@@ -1,5 +1,5 @@
-use isahc::ResponseExt;
-use std::{env, error::Error, str::FromStr, sync::Arc};
+use isahc::{http::Response, ResponseExt};
+use std::{env, error::Error, fmt::Debug, io::Read, str::FromStr, sync::Arc};
 use tokio::stream::StreamExt;
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
@@ -550,6 +550,139 @@ mod raccord {
     }
 }
 
+async fn handle_response<T: Debug + Read>(
+    mut res: Response<T>,
+    http: HttpClient,
+    from_server: Option<GuildId>,
+    from_channel: Option<ChannelId>,
+    _from_user: Option<UserId>,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    dbg!(&res);
+
+    let status = res.status();
+    if status.is_informational() {
+        todo!("log(error) unhandled 1xx code");
+    }
+
+    if status == 204 || status == 404 {
+        // no content, no action
+        return Ok(());
+    }
+
+    if status.is_redirection() {
+        match status.into() {
+            300 => todo!("multiple choice design"),
+            301 | 302 | 303 | 307 | 308 => unreachable!("redirects should be handled by curl"),
+            304 => todo!("response caching"),
+            305 | 306 => todo!("log(error) proxy redirections as unsupported"),
+            _ => todo!("log(error) invalid 3xx code"),
+        }
+    }
+
+    if status.is_client_error() || status.is_server_error() {
+        todo!("http error reporting");
+    }
+
+    if !status.is_success() {
+        todo!("log(error) invalid response status");
+    }
+
+    let content_type = res
+        .headers()
+        .get("content-type")
+        .and_then(|s| s.to_str().ok())
+        .and_then(|s| mime::Mime::from_str(s).ok())
+        .unwrap_or(mime::APPLICATION_OCTET_STREAM);
+
+    match (content_type.type_(), content_type.subtype()) {
+        (mime::APPLICATION, mime::JSON) => {
+            let act: raccord::Act = res.json()?;
+            let default_server_id = res
+                .headers()
+                .get("accord-server-id")
+                .and_then(|h| h.to_str().ok())
+                .and_then(|s| u64::from_str(s).ok())
+                .map(GuildId)
+                .or(from_server);
+            let default_channel_id = res
+                .headers()
+                .get("accord-channel-id")
+                .and_then(|h| h.to_str().ok())
+                .and_then(|s| u64::from_str(s).ok())
+                .map(ChannelId)
+                .or(from_channel);
+
+            match act {
+                raccord::Act::CreateMessage {
+                    content,
+                    channel_id,
+                } => {
+                    let channel_id = channel_id
+                        .map(ChannelId)
+                        .or(default_channel_id)
+                        .expect("todo: log(error) missing channel");
+                    http.create_message(channel_id).content(content)?.await?;
+                }
+                raccord::Act::AssignRole {
+                    role_id,
+                    user_id,
+                    server_id,
+                    reason,
+                } => {
+                    let server_id = server_id
+                        .map(GuildId)
+                        .or(default_server_id)
+                        .expect("todo: log(error) missing server");
+
+                    let mut add = http.add_role(server_id, UserId(user_id), RoleId(role_id));
+
+                    if let Some(text) = reason {
+                        add = add.reason(text);
+                    }
+
+                    add.await?;
+                }
+                raccord::Act::RemoveRole {
+                    role_id,
+                    user_id,
+                    server_id,
+                    reason,
+                } => {
+                    let server_id = server_id
+                        .map(GuildId)
+                        .or(default_server_id)
+                        .expect("todo: log(error) missing server");
+
+                    let mut rm =
+                        http.remove_guild_member_role(server_id, UserId(user_id), RoleId(role_id));
+
+                    if let Some(text) = reason {
+                        rm = rm.reason(text);
+                    }
+
+                    rm.await?;
+                }
+            }
+        }
+        (mime::TEXT, mime::PLAIN) => {
+            let reply = res.text().expect("todo: log(error) failed to decode text");
+            let channel_id = res
+                .headers()
+                .get("accord-channel-id")
+                .and_then(|h| h.to_str().ok())
+                .and_then(|s| u64::from_str(s).ok())
+                .map(ChannelId)
+                .or(from_channel)
+                .expect("log(error): missing channel");
+
+            http.create_message(channel_id).content(reply)?.await?;
+        }
+        (t, s) => todo!("log(warn) unhandled content-type {}/{}", t, s),
+    }
+
+    Ok(())
+}
+
 async fn handle_event(
     target: Arc<raccord::Client>,
     event: (u64, Event),
@@ -558,139 +691,6 @@ async fn handle_event(
     match event {
         (_, Event::MessageCreate(message)) if message.guild_id.is_some() => {
             let msg = raccord::ServerMessage::from(&**message);
-            let mut res = if let Some(command) = target.parse_command(&msg.content) {
-                target.post(raccord::Command {
-                    command,
-                    message: msg,
-                })
-            } else {
-                target.post(msg)
-            }
-            .await?;
-
-            dbg!(&res);
-
-            let status = res.status();
-            if status.is_informational() {
-                todo!("log(error) unhandled 1xx code");
-            }
-
-            if status == 204 || status == 404 {
-                // no content, no action
-                return Ok(());
-            }
-
-            if status.is_redirection() {
-                match status.into() {
-                    300 => todo!("multiple choice design"),
-                    301 | 302 | 303 | 307 | 308 => {
-                        unreachable!("redirects should be handled by curl")
-                    }
-                    304 => todo!("response caching"),
-                    305 | 306 => todo!("log(error) proxy redirections as unsupported"),
-                    _ => todo!("log(error) invalid 3xx code"),
-                }
-            }
-
-            if status.is_client_error() || status.is_server_error() {
-                todo!("http error reporting");
-            }
-
-            if !status.is_success() {
-                todo!("log(error) invalid response status");
-            }
-
-            let content_type = res
-                .headers()
-                .get("content-type")
-                .and_then(|s| s.to_str().ok())
-                .and_then(|s| mime::Mime::from_str(s).ok())
-                .unwrap_or(mime::APPLICATION_OCTET_STREAM);
-
-            match (content_type.type_(), content_type.subtype()) {
-                (mime::APPLICATION, mime::JSON) => {
-                    let act: raccord::Act = res.json()?;
-                    let default_server_id = res
-                        .headers()
-                        .get("accord-server-id")
-                        .and_then(|h| h.to_str().ok())
-                        .and_then(|s| u64::from_str(s).ok())
-                        .map(GuildId)
-                        .unwrap_or(message.guild_id.unwrap());
-                    let default_channel_id = res
-                        .headers()
-                        .get("accord-channel-id")
-                        .and_then(|h| h.to_str().ok())
-                        .and_then(|s| u64::from_str(s).ok())
-                        .map(ChannelId)
-                        .unwrap_or(message.channel_id);
-
-                    match act {
-                        raccord::Act::CreateMessage {
-                            content,
-                            channel_id,
-                        } => {
-                            let channel_id =
-                                channel_id.map(ChannelId).unwrap_or(default_channel_id);
-                            http.create_message(channel_id).content(content)?.await?;
-                        }
-                        raccord::Act::AssignRole {
-                            role_id,
-                            user_id,
-                            server_id,
-                            reason,
-                        } => {
-                            let server_id = server_id.map(GuildId).unwrap_or(default_server_id);
-
-                            let mut add =
-                                http.add_role(server_id, UserId(user_id), RoleId(role_id));
-
-                            if let Some(text) = reason {
-                                add = add.reason(text);
-                            }
-
-                            add.await?;
-                        }
-                        raccord::Act::RemoveRole {
-                            role_id,
-                            user_id,
-                            server_id,
-                            reason,
-                        } => {
-                            let server_id = server_id.map(GuildId).unwrap_or(default_server_id);
-
-                            let mut rm = http.remove_guild_member_role(
-                                server_id,
-                                UserId(user_id),
-                                RoleId(role_id),
-                            );
-
-                            if let Some(text) = reason {
-                                rm = rm.reason(text);
-                            }
-
-                            rm.await?;
-                        }
-                        _ => todo!("handle other acts"),
-                    }
-                }
-                (mime::TEXT, mime::PLAIN) => {
-                    let reply = res.text().expect("todo: log(error) failed to decode text");
-                    let channel_id = res
-                        .headers()
-                        .get("accord-channel-id")
-                        .and_then(|h| h.to_str().ok())
-                        .and_then(|s| u64::from_str(s).ok())
-                        .map(ChannelId)
-                        .unwrap_or(message.channel_id);
-
-                    http.create_message(channel_id).content(reply)?.await?;
-                }
-                (t, s) => todo!("log(warn) unhandled content-type {}/{}", t, s),
-            }
-        }
-        (_, Event::MessageCreate(msg)) => {
-            let msg = raccord::DirectMessage::from(&**msg);
             let res = if let Some(command) = target.parse_command(&msg.content) {
                 target.post(raccord::Command {
                     command,
@@ -700,16 +700,37 @@ async fn handle_event(
                 target.post(msg)
             }
             .await?;
-
-            //http.create_message(msg.channel_id).content("beep")?.await?;
+            handle_response(
+                res,
+                http,
+                Some(message.guild_id.unwrap()),
+                Some(message.channel_id),
+                None,
+            )
+            .await?;
+        }
+        (_, Event::MessageCreate(message)) => {
+            let msg = raccord::DirectMessage::from(&**message);
+            let res = if let Some(command) = target.parse_command(&msg.content) {
+                target.post(raccord::Command {
+                    command,
+                    message: msg,
+                })
+            } else {
+                target.post(msg)
+            }
+            .await?;
+            handle_response(res, http, None, Some(message.channel_id), None).await?;
         }
         (_, Event::MemberAdd(mem)) => {
             let member = raccord::Member::from(&**mem);
             let res = target.post(raccord::ServerJoin(member)).await?;
+            handle_response(res, http, Some(mem.guild_id), None, None).await?;
         }
         (shard, Event::ShardConnected(_)) => {
             info!("connected on shard {}", shard);
             let res = target.post(raccord::Connected { shard }).await?;
+            handle_response(res, http, None, None, None).await?;
         }
         _ => {}
     }
