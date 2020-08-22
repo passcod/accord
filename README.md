@@ -104,12 +104,13 @@ All the information in headers is also available in the payload (except for the
 `accord-version` header, which is present on all requests but in no payload),
 and these are intended less for the application (which should parse the payload
 instead) and more for the request router (which might not posses the ability to
-inspect bodies or parse JSON). For example, nginx could route events to voice
-channels (`accord-channel-type: voice`) to a different application.
+inspect bodies or parse JSON). For example, nginx could route DM events
+(`accord-channel-type: direct`) to a different application.
 
  - `accord-version` — Always provided, the version of Accord itself;
  - `accord-server-id` — In guild context only;
  - `accord-channel-id` — In channel contexts;
+ - `accord-channel-type` — `text` or `voice` in guilds, `direct` for DMs.
  - `accord-message-id` — In message contexts;
  - `accord-author-type` or `accord-user-type` — `bot` or `user`;
  - `accord-author-id` or `accord-user-id`;
