@@ -1,37 +1,306 @@
-# ![Accord](./res/pitch.png)
+# ![Accord: interfaces between discord and a local http server](./res/pitch.png)
 
 - Status: alpha, not production ready (on account of the large number of non-critical errors that panic instead of logging)
 - Releases: none, build from source from `main` branch
 - Contribute: you can!
 - License: [CC-BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)
-  + Uhhh... this isn't a software license? Pending a better license choice later, maybe.
+  + Uhhh... this isn't a software license? It still functions as a "work" license.
+    May be changed later.
 
-## Docs (pretty sparse for now)
+## Docs (may not be up to date)
 
-### `ACCORD_COMMAND_*` regexes
+To get started, stand up a server (for example, a PHP standalone server that
+routes everything to `index.php`: `php -S 127.0.0.1:8080 index.php`) and add
+its address to the `ACCORD_TARGET` environment variable.
 
-Use https://rustexp.lpil.uk to play around.
+Then add your bot's discord token to `DISCORD_TOKEN`, and start Accord.
 
-#### Matchers
+Accord will now make a request to your server whenever an event occurs on
+Discord that your bot can see.
 
-Set in `ACCORD_COMMAND_MATCH`. It will be matched only, no capturing:
+### Events to endpoint table
 
-- `^~\w+` matches `~pizza` and `~ham burger` but not `~!` nor `some plain sentence`
+| Event | Endpoint | Payload type | Responses allowed |
+|-------|----------|--------------|-------------------|
+| `MessageCreate` (from a guild) | `POST /server/{guild-id}/channel/{channel-id}/message` | [`Message`](#payload-type-message) | [`text/plain` reply content](#response-text-reply), [`application/json` acts](#response-json-acts) |
+| `MessageCreate` (from a DM) | `POST /direct/{channel-id}/message` | [`Message`](#payload-type-message) | [`text/plain` reply content](#response-text-reply), [`application/json` acts](#response-json-acts) |
+| `MessageCreate` (matching command regex) | `POST /command/{command...}` | [`Command`](#payload-type-command) | [`text/plain` reply content](#response-text-reply), [`application/json` acts](#response-json-acts) |
+| `MemberAdd` | `POST /server/{guild-id}/join/{user-id}` | [`application/json` acts](#response-json-acts) |
+| `ShardConnected` | `POST /discord/connected` | [`Connected`](#payload-type-connected) | [`application/json` acts](#response-json-acts) |
+| _before a connection is made_ | `GET /discord/connecting` | none | [`application/json` presence](#response-json-presence) |
 
-#### Parsers
+### Payloads
 
-Set in `ACCORD_COMMAND_PARSE`. It will be run only if the matcher has matched. If the parse regex is not provided, all commands matched by the matcher will be routed to `/command/`. If it is, all captures are collected and joined to the URL:
+All non-GET endpoint requests carry a payload, which is a JSON value of
+whatever particular type the event generates (see the table). Some types have
+subtypes, and so on. Types are given here in Typescript notation:
 
- - `(?:^~|\s+)(\w+)` parses `~pizza with pineapple` and routes to `/command/pizza/with/pineapple...`
+#### Payload type: `Message`
 
----
+```typescript
+{
+  id: number, // u64
+  server_id?: number, // always present for guild messages, never for DMs
+  channel_id: number,
+  author: Member | User, // Member for guild messages, User for DMs
+
+  timestamp_created: string, // as provided from discord
+  timestamp_edited?: string, // as provided from discord
+
+  kind: number, // u8, as provided from discord
+  content: string,
+
+  attachments: Array<Attachment>, // from twilight, type not stable/documented
+  embeds: Array<Embed>, // idem
+  reactions: Array<MessageReaction>, // idem
+
+  application?: MessageApplication, // idem
+  flags: Array<"crossposted" | "is-crosspost" | "suppress-embeds" | "source-message-deleted" | "urgent">,
+}
+```
+
+#### Payload type: `Member`
+
+```typescript
+{
+  user: User,
+  server_id: number,
+  roles?: Array<number>, // IDs of the roles
+  pseudonym?: string, // Aka the "server nick"
+}
+```
+
+#### Payload type: `User`
+
+```typescript
+{
+  id: number, // u64
+  name: string,
+  bot: boolean,
+}
+```
+
+#### Payload type: `Connected`
+
+```typescript
+{
+  shard: number,
+}
+```
+
+#### Payload type: `Command`
+
+```typescript
+{
+  command: Array<string>, // captures from the ACCORD_COMMAND_PARSE regex
+  message: Message,
+}
+```
+
+### Headers
+
+There are a set of headers, all beginning by `accord-`, that are set by events.
+All the information in headers is also available in the payload (except for the
+`accord-version` header, which is present on all requests but in no payload),
+and these are intended less for the application (which should parse the payload
+instead) and more for the request router (which might not posses the ability to
+inspect bodies or parse JSON). For example, nginx could route events to voice
+channels (`accord-channel-type: voice`) to a different application.
+
+ - `accord-version` — Always provided, the version of Accord itself;
+ - `accord-server-id` — In guild context only;
+ - `accord-channel-id` — In channel contexts;
+ - `accord-message-id` — In message contexts;
+ - `accord-author-type` or `accord-user-type` — `bot` or `user`;
+ - `accord-author-id` or `accord-user-id`;
+ - `accord-author-name` or `accord-user-name`;
+ - `accord-author-role-ids` or `accord-user-role-ids`;
+ - `accord-content-length` — In message contexts, the length of the message.
+
+### Statuses
+
+The response status code is handled identically throughout:
+
+ - 1xx are not supported unless curl handles them internally;
+ - 204 and 404 abort reading the response and return without any further action;
+ - multiple-choice (300) is not supported (but may be in future);
+ - not-modified (304) is not supported _yet_;
+ - redirects are handled internally by curl (limit 8);
+ - proxy redirections (305 and 306) are unsupported;
+ - error statuses (400 and above) log an error, and may do more later;
+ - all other success statuses are interpreted as a 200, and handling continues as below:
+
+### Responses
+
+The response expected from any endpoint varies. Generally the body needs to be
+JSON, but there are some endpoints that accept other types, like text, for
+convenience.
+
+The general JSON response format is called "act" and represents a single action
+to be taken by Accord. An act is an object with one key describing its type,
+and that particular act's properties as a child object.
+
+The `content-type` header of the response must be `application/json` for that
+format, and the JSON must contain no literal newlines (i.e. it can't be
+"pretty" JSON).
+
+Message create and command endpoints accept a `content-type: text/plain`
+response and interpret it as a `message-create` act with the response's body as
+content.
+
+Multiple actions are possible with the JSON format by separating each act with
+a newline (which is why individual acts can't span more than one line). An
+empty line is ignored without error. Each line is parsed as an act and actioned
+as soon as it is received, and the connection is kept open until EOL is
+received, so you can stream multiple acts with arbitrary delays in-between, and
+send "keepalives" to make sure the connection stays open in the form of
+additional newlines.
+
+(For this reason, on top of simple performance concerns, your server _must_
+support multiple simultaneous connections.)
+
+A few endpoints have special formats and do not support JSON act.
+
+#### Response: JSON acts
+
+##### Act: `create-message`
+
+Posts a new message.
+
+```typescript
+{ "create-message": {
+  content: string,
+  channel_id?: number, // u64 channel id to post in
+} }
+```
+
+The `content` is internally converted to UTF-16 codepoints and cannot exceed
+2000 of them (this is a Discord limit).
+
+Channel IDs are globally unique, so there's no need to supply a server ID.
+Accord will attempt to fill in the channel ID if not present in the act. In
+order of precedence:
+
+ - the act's `channel_id`
+ - the response header `accord-channel-id`, if present
+ - if the request is from a message context, that message's channel
+
+##### Act: `assign-role`
+
+Assigns a role to a member.
+
+```typescript
+{ "assign-role" {
+  role_id: number,
+  user_id: number,
+  server_id?: number,
+  reason?: string,
+} }
+```
+
+Accord will attempt to fill in the server ID if not present in the act. In
+order of precedence:
+
+ - the act's `server_id`
+ - the response header `accord-server-id`, if present
+ - if the request is from a guild context, that guild
+
+The `reason` string, when given, shows up in the guild's audit log.
+
+##### Act: `remove-role`
+
+Removes a role from a member.
+
+```typescript
+{ "assign-role" {
+  role_id: number,
+  user_id: number,
+  server_id?: number,
+  reason?: string,
+} }
+```
+
+Accord will attempt to fill in the server ID if not present in the act. In
+order of precedence:
+
+ - the act's `server_id`
+ - the response header `accord-server-id`, if present
+ - if the request is from a guild context, that guild
+
+The `reason` string, when given, shows up in the guild's audit log.
+
+#### Response: text reply
+
+In message create contexts (including commands), if a response has type
+`text/plain` is is read entirely as a UTF-8 string, and then treated as a
+single act with that string as content and no supplied `channel_id` (falling
+back to context or headers).
+
+#### Response: JSON presence
+
+The `/discord/connecting` special endpoint is called _before_ the Accord
+connects to Discord, and provides the opportunity to set the _presence_ of the
+bot. That is, its "online / offline / dnd / etc" status, whether it's marked as
+AFK, and what activity it's displaying, if any (the "Playing some game..."
+message under a user).
+
+It's not yet possible to change the presence while connected.
+
+```typescript
+{
+  afk?: boolean,
+  status?: "offline" | "online" | "dnd" | "idle" | "invisible",
+  since?: number,
+  activity?: Activity
+}
+```
+
+The `Activity` type can be any one of:
+
+```typescript
+{ playing: { name: string } }   // displays as `Playing {name}`
+{ streaming: { name: string } } // displays as `Streaming {name}`
+{ listening: { name: string } } // displays as `Listening to {name}`
+{ watching: { name: string } }  // displays as `Watching {name}`
+{ custom: { name: string } }    // may not be supported for bots yet
+```
+
+### Commands
+
+Message create events can go to either their generic endpoints or, if they
+match and parse as a _command_, will go to the `/command/...` endpoint.
+
+There are two (optional) environment variables controlling this:
+
+ - `ACCORD_COMMAND_MATCH` does a simple regex test. If it matches, the message
+   is considered a command, otherwise not.
+
+ - `ACCORD_COMMAND_PARSE` (if present) is then run on the message, and all
+   non-overlapping captures are collected and considered the "command" part of
+   the message.
+
+The endpoint is the contructed to `/command/` followed by the parsed and
+collected "command" parts as above joined by slashes.
+
+For example, `!pick me` could be parsed to the endpoint `/command/pick/me`, or
+to `/command/pick`, or just to `/command/`, depending on what the parser regex
+is or if it's present at all.
+
+If `ACCORD_COMMAND_MATCH` is not present, then nothing will go to `/command/...`.
+
+The regex engine is the [regex](https://docs.rs/regex) crate with all defaults.
+You can use this online tool to play/test regexes: https://rustexp.lpil.uk
+
+To get started, try these:
+
+```
+ACCORD_COMMAND_MATCH = ^!\w+
+ACCORD_COMMAND_PARSE = (?:^!|\s+)(\w+)
+```
 
 ## Credits
 
 - The [logo](./logo.svg) is remixed from [the hands-helping solid Font Awesome icon](https://fontawesome.com/icons/hands-helping?style=solid), licensed under [CC-BY 4.0](https://fontawesome.com/license).
-
-
----
 
 ## Background and Vision
 

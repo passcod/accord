@@ -1,7 +1,7 @@
 use isahc::{http::Response, ResponseExt};
 use std::{env, error::Error, fmt::Debug, io::Read, str::FromStr, sync::Arc};
 use tokio::stream::StreamExt;
-use tracing::{info, Level};
+use tracing::{error, info, trace, warn, Level};
 use tracing_subscriber::FmtSubscriber;
 use twilight::{
     cache::{
@@ -304,7 +304,6 @@ mod raccord {
         pub id: u64,
         pub name: String,
         pub bot: bool,
-        pub roles: Option<Vec<u64>>,
     }
 
     impl From<&DisUser> for User {
@@ -313,7 +312,6 @@ mod raccord {
                 id: dis.id.0,
                 name: dis.name.clone(),
                 bot: dis.bot,
-                roles: None,
             }
         }
     }
@@ -380,6 +378,7 @@ mod raccord {
     }
 
     #[derive(Clone, Copy, Debug, Serialize)]
+    #[serde(rename_all = "kebab-case")]
     pub enum MessageFlag {
         Crossposted,
         IsCrosspost,
@@ -660,30 +659,38 @@ async fn handle_response<T: Debug + Read>(
 
     let status = res.status();
     if status.is_informational() {
-        todo!("log(error) unhandled 1xx code");
+        warn!("unhandled information code {:?}", status);
     }
 
     if status == 204 || status == 404 {
         // no content, no action
+        trace!("no action response: {:?}", status);
         return Ok(());
     }
 
     if status.is_redirection() {
         match status.into() {
-            300 => todo!("multiple choice design"),
+            300 => warn!("TODO: multiple choice (http 300) is not designed yet"),
             301 | 302 | 303 | 307 | 308 => unreachable!("redirects should be handled by curl"),
-            304 => todo!("response caching"),
-            305 | 306 => todo!("log(error) proxy redirections as unsupported"),
-            _ => todo!("log(error) invalid 3xx code"),
+            304 => error!("http 304 response caching not implemented"),
+            305 | 306 => error!("proxy redirections (http 305 and 306) unsupported"),
+            _ => error!("invalid 3xx code"),
         }
+
+        return Ok(());
     }
 
     if status.is_client_error() || status.is_server_error() {
-        todo!("http error reporting");
+        error!(
+            "error {:?} from target, TODO: more error handling here",
+            status
+        );
+        return Ok(());
     }
 
     if !status.is_success() {
-        todo!("log(error) invalid response status");
+        error!("invalid response status: {:?}", status);
+        return Ok(());
     }
 
     let content_type = res
@@ -776,7 +783,7 @@ async fn handle_response<T: Debug + Read>(
 
             http.create_message(channel_id).content(reply)?.await?;
         }
-        (t, s) => todo!("log(warn) unhandled content-type {}/{}", t, s),
+        (t, s) => warn!("unhandled content-type {}/{}", t, s),
     }
 
     Ok(())
