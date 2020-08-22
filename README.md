@@ -2,6 +2,39 @@
 
 ![Accord logo](./logo.svg)
 
+- Status: alpha, not production ready (on account of the large number of non-critical errors that panic instead of logging)
+- Releases: none, build from source from `main` branch
+- Contribute: you can!
+- License: [CC-BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)
+  + Uhhh... this isn't a software license? Pending a better license choice later, maybe.
+
+## Docs (pretty sparse for now)
+
+### `ACCORD_COMMAND_*` regexes
+
+Use https://rustexp.lpil.uk to play around.
+
+#### Matchers
+
+Set in `ACCORD_COMMAND_MATCH`. It will be matched only, no capturing:
+
+- `^~\w+` matches `~pizza` and `~ham burger` but not `~!` nor `some plain sentence`
+
+#### Parsers
+
+Set in `ACCORD_COMMAND_PARSE`. It will be run only if the matcher has matched. If the parse regex is not provided, all commands matched by the matcher will be routed to `/command/`. If it is, all captures are collected and joined to the URL:
+
+ - `(?:^~|\s+)(\w+)` parses `~pizza with pineapple` and routes to `/command/pizza/with/pineapple...`
+
+---
+
+## Credits
+
+- The [logo](./logo.svg) is remixed from [the hands-helping solid Font Awesome icon](https://fontawesome.com/icons/hands-helping?style=solid), licensed under [CC-BY 4.0](https://fontawesome.com/license).
+
+
+---
+
 ## Background and Vision
 
 Accord is a Discord API client to power Discord API clients. Like bots. It is itself built on top of
@@ -91,7 +124,7 @@ What if you need to stream some audio to a voice channel?
   You can even redirect to an external resource (not recommended, for security and performance
   reasons... but you can do it).
 
-## Beyond Discord
+### Beyond Discord
 
 This... is only the beginning.
 
@@ -106,29 +139,9 @@ The first example above, a bot that rolls a die, could be the exact same backend
 Slack and for Discord. At the same time, and in parallel, you could have a Discord-specific voice
 endpoint, and a Slack-specific poll endpoint.
 
-## Isn't this really inefficient?
+### Isn't this really inefficient?
 
 Yeah, kinda. Instead of a bot that interacts directly with Discord, you have at least two additional
 layers. All that adds is a few tens of milliseconds. What you _gain_ is likely worth it. By a lot.
 
-## Why isn't this a thing yet?
 
-~~Because I have too many other projects on the stove and I'm trying to cut back.~~
-
-It's happening!
-
-### `ACCORD_COMMAND_*` regexes
-
-Use https://rustexp.lpil.uk to play around.
-
-#### Matchers
-
-Set in `ACCORD_COMMAND_MATCH`. It will be matched only, no capturing:
-
-- `^~\w+` matches `~pizza` and `~ham burger` but not `~!` nor `some plain sentence`
-
-#### Parsers
-
-Set in `ACCORD_COMMAND_PARSE`. It will be run only if the matcher has matched. If the parse regex is not provided, all commands matched by the matcher will be routed to `/command/`. If it is, all captures are collected and joined to the URL:
-
- - `(?:^~|\s+)(\w+)` parses `~pizza with pineapple` and routes to `/command/pizza/with/pineapple...`
