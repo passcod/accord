@@ -1,6 +1,8 @@
 # Accord
 
-At the moment, Accord is only an idea. It may get implemented this year.
+![Accord logo](./logo.svg)
+
+## Background and Vision
 
 Accord is a Discord API client to power Discord API clients. Like bots. It is itself built on top of
 whichever Discord API library I choose to build it. (Probably Serenity.) So, perhaps it should be
