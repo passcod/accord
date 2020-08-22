@@ -15,7 +15,7 @@ use twilight::{
     http::Client as HttpClient,
     model::{
         gateway::GatewayIntents,
-        id::{ChannelId, RoleId, UserId},
+        id::{ChannelId, GuildId, RoleId, UserId},
     },
 };
 
@@ -538,11 +538,13 @@ mod raccord {
         AssignRole {
             role_id: u64,
             user_id: u64,
+            server_id: Option<u64>,
             reason: Option<String>,
         },
         RemoveRole {
             role_id: u64,
             user_id: u64,
+            server_id: Option<u64>,
             reason: Option<String>,
         },
     }
@@ -608,6 +610,13 @@ async fn handle_event(
             match (content_type.type_(), content_type.subtype()) {
                 (mime::APPLICATION, mime::JSON) => {
                     let act: raccord::Act = res.json()?;
+                    let default_server_id = res
+                        .headers()
+                        .get("accord-server-id")
+                        .and_then(|h| h.to_str().ok())
+                        .and_then(|s| u64::from_str(s).ok())
+                        .map(GuildId)
+                        .unwrap_or(message.guild_id.unwrap());
                     let default_channel_id = res
                         .headers()
                         .get("accord-channel-id")
@@ -616,7 +625,6 @@ async fn handle_event(
                         .map(ChannelId)
                         .unwrap_or(message.channel_id);
 
-                    dbg!(&act);
                     match act {
                         raccord::Act::CreateMessage {
                             content,
@@ -629,32 +637,39 @@ async fn handle_event(
                         raccord::Act::AssignRole {
                             role_id,
                             user_id,
+                            server_id,
                             reason,
                         } => {
-                            let mut add = http.add_role(
-                                message.guild_id.unwrap(),
-                                UserId(user_id),
-                                RoleId(role_id),
-                            );
+                            let server_id = server_id.map(GuildId).unwrap_or(default_server_id);
+
+                            let mut add =
+                                http.add_role(server_id, UserId(user_id), RoleId(role_id));
+
                             if let Some(text) = reason {
                                 add = add.reason(text);
                             }
+
                             add.await?;
                         }
                         raccord::Act::RemoveRole {
                             role_id,
                             user_id,
+                            server_id,
                             reason,
                         } => {
-                            let mut add = http.remove_guild_member_role(
-                                message.guild_id.unwrap(),
+                            let server_id = server_id.map(GuildId).unwrap_or(default_server_id);
+
+                            let mut rm = http.remove_guild_member_role(
+                                server_id,
                                 UserId(user_id),
                                 RoleId(role_id),
                             );
+
                             if let Some(text) = reason {
-                                add = add.reason(text);
+                                rm = rm.reason(text);
                             }
-                            add.await?;
+
+                            rm.await?;
                         }
                         _ => todo!("handle other acts"),
                     }
