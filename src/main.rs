@@ -13,7 +13,7 @@ use twilight::{
         Event,
     },
     http::Client as HttpClient,
-    model::gateway::GatewayIntents,
+    model::{gateway::GatewayIntents, id::ChannelId},
 };
 
 #[async_std::main]
@@ -590,10 +590,15 @@ async fn handle_event(
                 }
                 (mime::TEXT, mime::PLAIN) => {
                     let reply = res.text().expect("todo: log(error) failed to decode text");
-                    http.create_message(message.channel_id)
-                        .content(reply)?
-                        .await?;
-                    // TODO: parse headers and adjust server/channel if needed
+                    let channel_id = res
+                        .headers()
+                        .get("accord-channel-id")
+                        .and_then(|h| h.to_str().ok())
+                        .and_then(|s| u64::from_str(s).ok())
+                        .map(ChannelId)
+                        .unwrap_or(message.channel_id);
+
+                    http.create_message(channel_id).content(reply)?.await?;
                 }
                 (t, s) => todo!("log(warn) unhandled content-type {}/{}", t, s),
             }
