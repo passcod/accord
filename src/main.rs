@@ -1,3 +1,6 @@
+#![doc(html_favicon_url = "https://raw.githubusercontent.com/passcod/accord/main/res/logo.png")]
+#![doc(html_logo_url = "https://raw.githubusercontent.com/passcod/accord/main/res/logo.png")]
+
 use isahc::{http::Response, ResponseExt};
 use std::{env, error::Error, fmt::Debug, io::Read, str::FromStr, sync::Arc};
 use tokio::stream::StreamExt;
@@ -702,7 +705,6 @@ async fn handle_response<T: Debug + Read>(
 
     match (content_type.type_(), content_type.subtype()) {
         (mime::APPLICATION, mime::JSON) => {
-            let act: raccord::Act = res.json()?;
             let default_server_id = res
                 .headers()
                 .get("accord-server-id")
@@ -717,57 +719,19 @@ async fn handle_response<T: Debug + Read>(
                 .and_then(|s| u64::from_str(s).ok())
                 .map(ChannelId)
                 .or(from_channel);
+            let has_content_length = res
+                .headers()
+                .get("content-length")
+                .and_then(|s| s.to_str().ok())
+                .and_then(|s| usize::from_str(s).ok())
+                .unwrap_or(0)
+                > 0;
 
-            match act {
-                raccord::Act::CreateMessage {
-                    content,
-                    channel_id,
-                } => {
-                    let channel_id = channel_id
-                        .map(ChannelId)
-                        .or(default_channel_id)
-                        .expect("todo: log(error) missing channel");
-                    http.create_message(channel_id).content(content)?.await?;
-                }
-                raccord::Act::AssignRole {
-                    role_id,
-                    user_id,
-                    server_id,
-                    reason,
-                } => {
-                    let server_id = server_id
-                        .map(GuildId)
-                        .or(default_server_id)
-                        .expect("todo: log(error) missing server");
-
-                    let mut add = http.add_role(server_id, UserId(user_id), RoleId(role_id));
-
-                    if let Some(text) = reason {
-                        add = add.reason(text);
-                    }
-
-                    add.await?;
-                }
-                raccord::Act::RemoveRole {
-                    role_id,
-                    user_id,
-                    server_id,
-                    reason,
-                } => {
-                    let server_id = server_id
-                        .map(GuildId)
-                        .or(default_server_id)
-                        .expect("todo: log(error) missing server");
-
-                    let mut rm =
-                        http.remove_guild_member_role(server_id, UserId(user_id), RoleId(role_id));
-
-                    if let Some(text) = reason {
-                        rm = rm.reason(text);
-                    }
-
-                    rm.await?;
-                }
+            if has_content_length {
+                let act: raccord::Act = res.json()?;
+                handle_act(http, act, default_server_id, default_channel_id).await?;
+            } else {
+                //
             }
         }
         (mime::TEXT, mime::PLAIN) => {
@@ -784,6 +748,66 @@ async fn handle_response<T: Debug + Read>(
             http.create_message(channel_id).content(reply)?.await?;
         }
         (t, s) => warn!("unhandled content-type {}/{}", t, s),
+    }
+
+    Ok(())
+}
+
+async fn handle_act(
+    http: HttpClient,
+    act: raccord::Act,
+    default_server_id: Option<GuildId>,
+    default_channel_id: Option<ChannelId>,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    match act {
+        raccord::Act::CreateMessage {
+            content,
+            channel_id,
+        } => {
+            let channel_id = channel_id
+                .map(ChannelId)
+                .or(default_channel_id)
+                .expect("todo: log(error) missing channel");
+            http.create_message(channel_id).content(content)?.await?;
+        }
+        raccord::Act::AssignRole {
+            role_id,
+            user_id,
+            server_id,
+            reason,
+        } => {
+            let server_id = server_id
+                .map(GuildId)
+                .or(default_server_id)
+                .expect("todo: log(error) missing server");
+
+            let mut add = http.add_role(server_id, UserId(user_id), RoleId(role_id));
+
+            if let Some(text) = reason {
+                add = add.reason(text);
+            }
+
+            add.await?;
+        }
+        raccord::Act::RemoveRole {
+            role_id,
+            user_id,
+            server_id,
+            reason,
+        } => {
+            let server_id = server_id
+                .map(GuildId)
+                .or(default_server_id)
+                .expect("todo: log(error) missing server");
+
+            let mut rm = http.remove_guild_member_role(server_id, UserId(user_id), RoleId(role_id));
+
+            if let Some(text) = reason {
+                rm = rm.reason(text);
+            }
+
+            rm.await?;
+        }
     }
 
     Ok(())
