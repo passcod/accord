@@ -729,17 +729,23 @@ async fn handle_response<T: Debug + Read + AsyncRead + Unpin>(
                 > 0;
 
             if has_content_length {
+                info!("response has content-length, parsing single act");
                 let act: raccord::Act = res.json()?;
                 handle_act(http, act, default_server_id, default_channel_id).await?;
             } else {
+                info!("response has no content-length, streaming multiple acts");
                 let mut lines = BufReader::new(res.into_body()).lines();
                 loop {
                     if let Some(line) = lines.next().await {
                         let line = line?;
-                        let act: raccord::Act = serde_json::from_str(&line)?;
+                        dbg!(&line);
+                        let act: raccord::Act = serde_json::from_str(line.trim())?;
                         handle_act(http.clone(), act, default_server_id, default_channel_id).await?;
+                    } else {
+                        break;
                     }
                 }
+                info!("done streaming");
             }
         }
         (mime::TEXT, mime::PLAIN) => {

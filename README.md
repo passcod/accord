@@ -155,7 +155,9 @@ empty line is ignored without error. Each line is parsed as an act and actioned
 as soon as it is received, and the connection is kept open until EOL is
 received, so you can stream multiple acts with arbitrary delays in-between, and
 send "keepalives" to make sure the connection stays open in the form of
-additional newlines.
+additional newlines. Lines are trimmed of leading and trailing whitespace
+before parsing as JSON, so you can pad out your messages to ~4096 bytes to
+reach bufferring thresholds.
 
 (For this reason, on top of simple performance concerns, your server _must_
 support multiple simultaneous connections.)
