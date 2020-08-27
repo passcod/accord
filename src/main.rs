@@ -1,6 +1,7 @@
 #![doc(html_favicon_url = "https://raw.githubusercontent.com/passcod/accord/main/res/logo.png")]
 #![doc(html_logo_url = "https://raw.githubusercontent.com/passcod/accord/main/res/logo.png")]
 
+use futures::io::{AsyncRead, AsyncBufReadExt, BufReader};
 use isahc::{http::Response, ResponseExt};
 use std::{env, error::Error, fmt::Debug, io::Read, str::FromStr, sync::Arc};
 use tokio::stream::StreamExt;
@@ -651,7 +652,7 @@ mod raccord {
     }
 }
 
-async fn handle_response<T: Debug + Read>(
+async fn handle_response<T: Debug + Read + AsyncRead + Unpin>(
     mut res: Response<T>,
     http: HttpClient,
     from_server: Option<GuildId>,
@@ -731,7 +732,14 @@ async fn handle_response<T: Debug + Read>(
                 let act: raccord::Act = res.json()?;
                 handle_act(http, act, default_server_id, default_channel_id).await?;
             } else {
-                //
+                let mut lines = BufReader::new(res.into_body()).lines();
+                loop {
+                    if let Some(line) = lines.next().await {
+                        let line = line?;
+                        let act: raccord::Act = serde_json::from_str(&line)?;
+                        handle_act(http.clone(), act, default_server_id, default_channel_id).await?;
+                    }
+                }
             }
         }
         (mime::TEXT, mime::PLAIN) => {
