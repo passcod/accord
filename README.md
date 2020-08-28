@@ -4,8 +4,9 @@
 - Releases: none, build from source from `main` branch
 - Contribute: you can!
 - License: [CC-BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)
-  + Uhhh... this isn't a software license? It still functions as a "work" license.
-    May be changed later.
+  + “Uhhh... this isn't a software license?”
+  + Yes, but it still functions as a “work” license.
+  + It may be changed later.
 
 ## Docs (may not be up to date)
 
