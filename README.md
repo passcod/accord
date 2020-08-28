@@ -1,6 +1,9 @@
 # ![Accord: interfaces between discord and a local http server](./res/pitch.png)
 
-- Status: alpha, not production ready (on account of the large number of non-critical errors that panic instead of logging)
+- Status:
+  + alpha
+  + not production tested
+  + covers only a [small](https://github.com/passcod/accord/issues/1) part of the API
 - Releases: none, build from source from `main` branch
 - Contribute: you can!
 - License: [CC-BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)
