@@ -209,7 +209,7 @@ order of precedence:
 Assigns a role to a member.
 
 ```typescript
-{ "assign-role" {
+{ "assign-role": {
   role_id: number,
   user_id: number,
   server_id?: number,
@@ -231,7 +231,7 @@ The `reason` string, when given, shows up in the guild's audit log.
 Removes a role from a member.
 
 ```typescript
-{ "assign-role" {
+{ "assign-role": {
   role_id: number,
   user_id: number,
   server_id?: number,
