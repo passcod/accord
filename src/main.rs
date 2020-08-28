@@ -1,7 +1,7 @@
 #![doc(html_favicon_url = "https://raw.githubusercontent.com/passcod/accord/main/res/logo.png")]
 #![doc(html_logo_url = "https://raw.githubusercontent.com/passcod/accord/main/res/logo.png")]
 
-use futures::io::{AsyncRead, AsyncBufReadExt, BufReader};
+use futures::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use isahc::{http::Response, ResponseExt};
 use std::{env, error::Error, fmt::Debug, io::Read, str::FromStr, sync::Arc};
 use tokio::stream::StreamExt;
@@ -45,7 +45,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         command_parse,
     ));
 
-    let mut connecting_res = target.get(raccord::Connecting).await?;
+    let mut connecting_res = target.get(raccord::Connecting)?.await?;
     dbg!(&connecting_res);
 
     let mut update_status = None;
@@ -139,13 +139,25 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     // Startup an event loop for each event in the event stream
     while let Some(event) = events.next().await {
         // Update the cache
-        cache.update(&event.1).await.expect("Cache failed, OhNoe");
+        cache.update(&event.1).await.expect("FATAL: cache failed");
 
         // Spawn a new task to handle the event
         tokio::spawn(handle_event(target.clone(), event, http.clone()));
     }
 
     Ok(())
+}
+
+mod error {
+    use thiserror::Error;
+
+    #[derive(Copy, Clone, Debug, Error)]
+    #[error("no server information available")]
+    pub struct MissingServer;
+
+    #[derive(Copy, Clone, Debug, Error)]
+    #[error("no channel information available")]
+    pub struct MissingChannel;
 }
 
 mod raccord {
@@ -156,7 +168,7 @@ mod raccord {
     };
     use regex::Regex;
     use serde::{Deserialize, Serialize};
-    use std::{fmt, time::Duration};
+    use std::{error::Error, fmt, time::Duration};
     use tracing::info;
     use twilight::model::{
         channel::{
@@ -191,13 +203,13 @@ mod raccord {
                 .tcp_keepalive(Duration::from_secs(15))
                 .tcp_nodelay()
                 .build()
-                .expect("failed to create http client");
+                .expect("FATAL: failed to create http client");
             let command_match_regex = command_match
                 .as_ref()
-                .map(|s| Regex::new(s).expect("bad regex: ACCORD_COMMAND_MATCH"));
+                .map(|s| Regex::new(s).expect("FATAL: bad regex: ACCORD_COMMAND_MATCH"));
             let command_parse_regex = command_parse
                 .as_ref()
-                .map(|s| Regex::new(s).expect("bad regex: ACCORD_COMMAND_PARSE"));
+                .map(|s| Regex::new(s).expect("FATAL: bad regex: ACCORD_COMMAND_PARSE"));
 
             let command_regex = command_match_regex.map(|mx| (mx, command_parse_regex));
 
@@ -231,28 +243,32 @@ mod raccord {
             })
         }
 
-        pub fn get<S: Sendable>(&self, payload: S) -> ResponseFuture {
+        pub fn get<S: Sendable>(
+            &self,
+            payload: S,
+        ) -> Result<ResponseFuture, Box<dyn Error + Send + Sync>> {
             info!("sending {}", std::any::type_name::<S>());
             let req = payload
                 .customise(
                     Request::get(format!("{}{}", self.base, payload.url()))
                         .header("content-type", "application/json"),
                 )
-                .body(())
-                .expect("failed to create request");
-            self.client.send_async(req)
+                .body(())?;
+            Ok(self.client.send_async(req))
         }
 
-        pub fn post<S: Sendable>(&self, payload: S) -> ResponseFuture {
+        pub fn post<S: Sendable>(
+            &self,
+            payload: S,
+        ) -> Result<ResponseFuture, Box<dyn Error + Send + Sync>> {
             info!("sending {}", std::any::type_name::<S>());
             let req = payload
                 .customise(
                     Request::post(format!("{}{}", self.base, payload.url()))
                         .header("content-type", "application/json"),
                 )
-                .body(serde_json::to_vec(&payload).expect("failed to serialize payload"))
-                .expect("failed to create request");
-            self.client.send_async(req)
+                .body(serde_json::to_vec(&payload)?)?;
+            Ok(self.client.send_async(req))
         }
     }
 
@@ -740,7 +756,8 @@ async fn handle_response<T: Debug + Read + AsyncRead + Unpin>(
                         let line = line?;
                         dbg!(&line);
                         let act: raccord::Act = serde_json::from_str(line.trim())?;
-                        handle_act(http.clone(), act, default_server_id, default_channel_id).await?;
+                        handle_act(http.clone(), act, default_server_id, default_channel_id)
+                            .await?;
                     } else {
                         break;
                     }
@@ -749,7 +766,7 @@ async fn handle_response<T: Debug + Read + AsyncRead + Unpin>(
             }
         }
         (mime::TEXT, mime::PLAIN) => {
-            let reply = res.text().expect("todo: log(error) failed to decode text");
+            let reply = res.text()?;
             let channel_id = res
                 .headers()
                 .get("accord-channel-id")
@@ -757,7 +774,7 @@ async fn handle_response<T: Debug + Read + AsyncRead + Unpin>(
                 .and_then(|s| u64::from_str(s).ok())
                 .map(ChannelId)
                 .or(from_channel)
-                .expect("log(error): missing channel");
+                .ok_or(error::MissingChannel)?;
 
             http.create_message(channel_id).content(reply)?.await?;
         }
@@ -781,7 +798,7 @@ async fn handle_act(
             let channel_id = channel_id
                 .map(ChannelId)
                 .or(default_channel_id)
-                .expect("todo: log(error) missing channel");
+                .ok_or(error::MissingChannel)?;
             http.create_message(channel_id).content(content)?.await?;
         }
         raccord::Act::AssignRole {
@@ -793,7 +810,7 @@ async fn handle_act(
             let server_id = server_id
                 .map(GuildId)
                 .or(default_server_id)
-                .expect("todo: log(error) missing server");
+                .ok_or(error::MissingServer)?;
 
             let mut add = http.add_role(server_id, UserId(user_id), RoleId(role_id));
 
@@ -812,7 +829,7 @@ async fn handle_act(
             let server_id = server_id
                 .map(GuildId)
                 .or(default_server_id)
-                .expect("todo: log(error) missing server");
+                .ok_or(error::MissingServer)?;
 
             let mut rm = http.remove_guild_member_role(server_id, UserId(user_id), RoleId(role_id));
 
@@ -842,7 +859,7 @@ async fn handle_event(
                 })
             } else {
                 target.post(msg)
-            }
+            }?
             .await?;
             handle_response(
                 res,
@@ -862,18 +879,18 @@ async fn handle_event(
                 })
             } else {
                 target.post(msg)
-            }
+            }?
             .await?;
             handle_response(res, http, None, Some(message.channel_id), None).await?;
         }
         (_, Event::MemberAdd(mem)) => {
             let member = raccord::Member::from(&**mem);
-            let res = target.post(raccord::ServerJoin(member)).await?;
+            let res = target.post(raccord::ServerJoin(member))?.await?;
             handle_response(res, http, Some(mem.guild_id), None, None).await?;
         }
         (shard, Event::ShardConnected(_)) => {
             info!("connected on shard {}", shard);
-            let res = target.post(raccord::Connected { shard }).await?;
+            let res = target.post(raccord::Connected { shard })?.await?;
             handle_response(res, http, None, None, None).await?;
         }
         _ => {}
