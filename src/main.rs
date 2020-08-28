@@ -45,53 +45,56 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         command_parse,
     ));
 
-    let mut connecting_res = target.get(raccord::Connecting)?.await?;
-    dbg!(&connecting_res);
-
     let mut update_status = None;
-    if connecting_res.status().is_success() {
-        let content_type = connecting_res
-            .headers()
-            .get("content-type")
-            .and_then(|s| s.to_str().ok())
-            .and_then(|s| mime::Mime::from_str(s).ok())
-            .unwrap_or(mime::APPLICATION_OCTET_STREAM);
+    if let Ok(mut connecting_res) = target.get(raccord::Connecting)?.await {
+        if connecting_res.status().is_success() {
+            let content_type = connecting_res
+                .headers()
+                .get("content-type")
+                .and_then(|s| s.to_str().ok())
+                .and_then(|s| mime::Mime::from_str(s).ok())
+                .unwrap_or(mime::APPLICATION_OCTET_STREAM);
 
-        if content_type == mime::APPLICATION_JSON {
-            let presence: raccord::Presence = connecting_res.json()?;
+            if content_type == mime::APPLICATION_JSON {
+                let presence: raccord::Presence = connecting_res.json()?;
 
-            update_status = Some(UpdateStatusInfo {
-                afk: presence.afk.unwrap_or(true),
-                since: presence.since,
-                status: presence.status.unwrap_or(Status::Online),
-                game: presence.activity.map(|activity| {
-                    let (kind, name) = match activity {
-                        raccord::Activity::Playing { name } => (ActivityType::Playing, name),
-                        raccord::Activity::Streaming { name } => (ActivityType::Streaming, name),
-                        raccord::Activity::Listening { name } => (ActivityType::Listening, name),
-                        raccord::Activity::Watching { name } => (ActivityType::Watching, name),
-                        raccord::Activity::Custom { name } => (ActivityType::Custom, name),
-                    };
+                update_status = Some(UpdateStatusInfo {
+                    afk: presence.afk.unwrap_or(true),
+                    since: presence.since,
+                    status: presence.status.unwrap_or(Status::Online),
+                    game: presence.activity.map(|activity| {
+                        let (kind, name) = match activity {
+                            raccord::Activity::Playing { name } => (ActivityType::Playing, name),
+                            raccord::Activity::Streaming { name } => {
+                                (ActivityType::Streaming, name)
+                            }
+                            raccord::Activity::Listening { name } => {
+                                (ActivityType::Listening, name)
+                            }
+                            raccord::Activity::Watching { name } => (ActivityType::Watching, name),
+                            raccord::Activity::Custom { name } => (ActivityType::Custom, name),
+                        };
 
-                    Activity {
-                        application_id: None,
-                        assets: None,
-                        created_at: None,
-                        details: None,
-                        emoji: None,
-                        flags: None,
-                        id: None,
-                        instance: None,
-                        party: None,
-                        secrets: None,
-                        state: None,
-                        timestamps: None,
-                        url: None,
-                        kind,
-                        name,
-                    }
-                }),
-            });
+                        Activity {
+                            application_id: None,
+                            assets: None,
+                            created_at: None,
+                            details: None,
+                            emoji: None,
+                            flags: None,
+                            id: None,
+                            instance: None,
+                            party: None,
+                            secrets: None,
+                            state: None,
+                            timestamps: None,
+                            url: None,
+                            kind,
+                            name,
+                        }
+                    }),
+                });
+            }
         }
     }
 
