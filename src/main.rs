@@ -35,8 +35,8 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         .finish();
     tracing::subscriber::set_global_default(subscriber)?;
 
-    let token = env::var("DISCORD_TOKEN")?;
-    let target_base = env::var("ACCORD_TARGET")?;
+    let token = env::var("DISCORD_TOKEN").expect("FATAL: missing env: DISCORD_TOKEN");
+    let target_base = env::var("ACCORD_TARGET").expect("FATAL: missing env: ACCORD_TARGET");
     let command_match = env::var("ACCORD_COMMAND_MATCH").ok();
     let command_parse = env::var("ACCORD_COMMAND_PARSE").ok();
     let target = Arc::new(raccord::Client::new(
