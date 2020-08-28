@@ -5,11 +5,18 @@
   + not production tested
   + covers only a [small](https://github.com/passcod/accord/issues/1) part of the API
 - Releases: none, build from source from `main` branch
-- Contribute: you can!
 - License: [CC-BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)
   + “Uhhh... this isn't a software license?”
   + Yes, but it still functions as a “work” license.
   + It may be changed later.
+- Contribute: you can!
+  + Areas in need of love: everywhere.
+  + The code is all currently in a single file. Split it up!
+  + More descriptive erroring and warnings would help lots!
+  + Basic response timing stats could be helpful!
+  + Anywhere there's a TODO comment...
+  + Some example applications would be ace!
+  + And of course, handling of more events is most welcome.
 
 ## Docs (may not be up to date)
 
