@@ -18,6 +18,11 @@ Then add your bot's discord token to `DISCORD_TOKEN`, and start Accord.
 Accord will now make a request to your server whenever an event occurs on
 Discord that your bot can see.
 
+Caveat (to be resolved): your bot currently needs to have the Members
+[privileged intent][privileged] enabled. This will become configurable later.
+
+[privileged]: https://discord.com/developers/docs/topics/gateway#privileged-intents
+
 ### Events to endpoint table
 
 | Event | Endpoint | Payload type | Responses allowed |
