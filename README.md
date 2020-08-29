@@ -329,6 +329,72 @@ ACCORD_COMMAND_MATCH = ^!\w+
 ACCORD_COMMAND_PARSE = (?:^!|\s+)(\w+)
 ```
 
+### Reverse interface
+
+Accord also has its own HTTP server listening, configured by the `ACCORD_BIND`
+variable. This allows client-initiated functionality.
+
+At the moment, only [Ghosts](#ghosts) are implemented.
+
+### Ghosts
+
+To act on Discord spontaneously, there are currently two options:
+
+1. Make your own requests directly to Discord.
+2. Create and respond to ghost events on the reverse interface.
+
+Ghost events are events your application generates and sends to Accord, which
+it then injects back into itself, as if they had come from Discord. Things
+proceed as normal from there. Ghosts are never sent to Discord, and only exist
+within the Accord instance they are sent to.
+
+The primary purpose of ghosts is to initiate actions without external stimuli.
+For example, a "clock" bot that posts a message every hour can summon, every
+hour, a ghost that sends the message `!clock`. Your server will then receive a
+request at `/command/clock`, answer approriately, and Accord will post the
+reply up on Discord.
+
+Ghosts can also be used to invoke a command from another command. For example,
+invoking `!roll 1-9` could detect that the arguments are more appropriate for
+the `!random` command, and send a ghost containing `!random 1-9`. That may be
+simpler than the alternatives (or it may not, exercise your own judgement).
+
+To summon a ghost, you make a request to `{ACCORD_BIND}/ghost/{ENDPOINT}` where
+`{ENDPOINT}` is the same endpoint [as in the forward
+interface](#events-to-endpoint-table), containing the payload you would have
+received from that endpoint. The main difference is that you don't need to set
+any `accord-` headers (as there's no need to have them for routing). You also
+don't need to set any payload field that is marked as optional.
+
+For example, to send the `!clock` ghost as above, you would send a POST request
+to `/ghost/server/123/channel/456/message` with the JSON body:
+
+```json
+{
+  "id": 0,
+  "server_id": 123,
+  "channel_id": 456,
+  "author": {
+    "server_id": 123
+    "user": {
+      "id": 0,
+      "name": "a ghost"
+    },
+  },
+  "timestamp_created": "2020-01-02T03:04:05Z",
+  "content": "!clock"
+}
+```
+
+The server and channel IDs in the body will be preferred to the ones in the
+URL, but you should still set them correctly in the URL (for future
+compatibility).
+
+Currently only the following endpoints are implemented on the ghost interface:
+
+- server messages: `/ghosts/server/{guild-id}/channel/{channel-id}/message`
+- direct messages: `/ghosts/direct/channel/{channel-id}/message`
+
 ## Credits
 
 - The [logo](./logo.svg) is remixed from [the hands-helping solid Font Awesome icon](https://fontawesome.com/icons/hands-helping?style=solid), licensed under [CC-BY 4.0](https://fontawesome.com/license).
