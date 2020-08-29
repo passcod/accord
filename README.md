@@ -34,6 +34,18 @@ Caveat (to be resolved): your bot currently needs to have the Members
 
 [privileged]: https://discord.com/developers/docs/topics/gateway#privileged-intents
 
+### Configuration
+
+Done through environment variables.
+
+| Name | Default | Purpose | Example |
+|------|---------|---------|---------|
+| `DISCORD_TOKEN` | **required** | Discord app token. ||
+| `ACCORD_TARGET` | **required** | Base URL of the server to send Accord requests to. | `http://localhost:8080` |
+| `ACCORD_BIND` | `localhost:8181` | Address to bind the reverse interface to. | `0.0.0.0:1234` |
+| [`ACCORD_COMMAND_MATCH`](#commands) | _none_ | Regex run on messages to match (true/false) as commands. | `^~\w+` |
+| [`ACCORD_COMMAND_PARSE`](#commands) | _none_ | Regex run on commands to parse them out (with captures). | `(?:^~\|\s+)(\w+)` |
+
 ### Events to endpoint table
 
 | Event | Endpoint | Payload type | Responses allowed |

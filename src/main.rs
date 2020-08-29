@@ -1,10 +1,16 @@
 #![doc(html_favicon_url = "https://raw.githubusercontent.com/passcod/accord/main/res/logo.png")]
 #![doc(html_logo_url = "https://raw.githubusercontent.com/passcod/accord/main/res/logo.png")]
 
+use async_channel::{unbounded, Receiver, Sender};
+use async_std::{
+    prelude::{FutureExt, StreamExt},
+    task::spawn,
+};
 use futures::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use isahc::{http::Response, ResponseExt};
 use std::{env, error::Error, fmt::Debug, io::Read, str::FromStr, sync::Arc};
-use tokio::stream::StreamExt;
+use tide::Server;
+use tide_tracing::TraceMiddleware;
 use tracing::{error, info, trace, warn, Level};
 use tracing_subscriber::FmtSubscriber;
 use twilight::{
@@ -35,6 +41,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         .finish();
     tracing::subscriber::set_global_default(subscriber)?;
 
+    let bind = env::var("ACCORD_BIND").unwrap_or_else(|_| String::from("localhost:8181"));
     let token = env::var("DISCORD_TOKEN").expect("FATAL: missing env: DISCORD_TOKEN");
     let target_base = env::var("ACCORD_TARGET").expect("FATAL: missing env: ACCORD_TARGET");
     let command_match = env::var("ACCORD_COMMAND_MATCH").ok();
@@ -45,6 +52,24 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         command_parse,
     ));
 
+    let (s, r) = unbounded();
+
+    match main_forward(token, target, r).join(main_reverse(bind, s)).await {
+        (Ok(_), Ok(_)) => Ok(()),
+        (Ok(_), Err(e)) => Err(e),
+        (Err(e), Ok(_)) => Err(e),
+        (Err(e), Err(f)) => {
+            eprintln!("{}", e);
+            Err(f)
+        }
+    }
+}
+
+async fn main_forward(
+    token: String,
+    target: Arc<raccord::Client>,
+    ghosts: Receiver<(u64, Event)>,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
     let mut update_status = None;
     if let Ok(mut connecting_res) = target.get(raccord::Connecting)?.await {
         if connecting_res.status().is_success() {
@@ -109,45 +134,46 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         config = config.presence(presence);
     }
 
-    // Start up the cluster
     let cluster = Cluster::new(config.build()).await?;
 
     let cluster_spawn = cluster.clone();
-
-    tokio::spawn(async move {
+    spawn(async move {
         cluster_spawn.up().await;
     });
 
-    // The http client is separate from the gateway,
-    // so startup a new one
     let http = HttpClient::new(&token);
 
-    // Since we only care about messages, make the cache only
-    // cache message related events
-    let cache_config = InMemoryConfigBuilder::new()
-        .event_types(
-            EventType::MESSAGE_CREATE
-                | EventType::MESSAGE_DELETE
-                | EventType::MESSAGE_DELETE_BULK
-                | EventType::MESSAGE_UPDATE
-                | EventType::MEMBER_ADD
-                | EventType::MEMBER_CHUNK
-                | EventType::MEMBER_UPDATE
-                | EventType::MEMBER_REMOVE,
-        )
-        .build();
-    let cache = InMemoryCache::from(cache_config);
+    let cache = InMemoryCache::from(
+        InMemoryConfigBuilder::new()
+            .event_types(
+                EventType::MESSAGE_CREATE
+                    | EventType::MESSAGE_DELETE
+                    | EventType::MESSAGE_DELETE_BULK
+                    | EventType::MESSAGE_UPDATE
+                    | EventType::MEMBER_ADD
+                    | EventType::MEMBER_CHUNK
+                    | EventType::MEMBER_UPDATE
+                    | EventType::MEMBER_REMOVE,
+            )
+            .build(),
+    );
 
-    let mut events = cluster.events().await;
-    // Startup an event loop for each event in the event stream
+    let solids = cluster.events().await;
+    let mut events = solids.merge(ghosts);
+
     while let Some(event) = events.next().await {
-        // Update the cache
         cache.update(&event.1).await.expect("FATAL: cache failed");
-
-        // Spawn a new task to handle the event
-        tokio::spawn(handle_event(target.clone(), event, http.clone()));
+        spawn(handle_event(target.clone(), event, http.clone()));
     }
 
+    Ok(())
+}
+
+async fn main_reverse(bind: String, ghosts: Sender<(u64, Event)>) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let mut app = Server::new();
+    app.with(TraceMiddleware::new());
+
+    app.listen(bind).await?;
     Ok(())
 }
 
