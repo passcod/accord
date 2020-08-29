@@ -75,7 +75,7 @@ subtypes, and so on. Types are given here in Typescript notation:
   timestamp_created: string, // as provided from discord
   timestamp_edited?: string, // as provided from discord
 
-  kind: number, // u8, as provided from discord
+  kind?: "regular", // usually "regular" (default), see source for others
   content: string,
 
   attachments: Array<Attachment>, // from twilight, type not stable/documented

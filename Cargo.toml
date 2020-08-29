@@ -30,7 +30,7 @@ features = ["json"]
 [dependencies.tide]
 version = "0.13.0"
 default-features = false
-features = ["h1-server", "logger"]
+features = ["h1-server"]
 
 [dependencies.twilight]
 branch = "trunk"

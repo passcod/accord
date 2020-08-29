@@ -54,7 +54,10 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 
     let (s, r) = unbounded();
 
-    match main_forward(token, target, r).join(main_reverse(bind, s)).await {
+    match main_forward(token, target, r)
+        .join(main_reverse(bind, s))
+        .await
+    {
         (Ok(_), Ok(_)) => Ok(()),
         (Ok(_), Err(e)) => Err(e),
         (Err(e), Ok(_)) => Err(e),
@@ -169,9 +172,42 @@ async fn main_forward(
     Ok(())
 }
 
-async fn main_reverse(bind: String, ghosts: Sender<(u64, Event)>) -> Result<(), Box<dyn Error + Send + Sync>> {
-    let mut app = Server::new();
+async fn main_reverse(
+    bind: String,
+    ghosts: Sender<(u64, Event)>,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    use tide::{Request, Response, StatusCode};
+    use twilight::model::{channel::Message, gateway::payload::MessageCreate};
+
+    #[derive(Clone, Debug)]
+    struct State {
+        pub ghosts: Sender<(u64, Event)>,
+    }
+
+    let mut app = Server::with_state(State { ghosts });
     app.with(TraceMiddleware::new());
+
+    app.at("/ghost/server/:server/channel/:channel/message")
+        .post(|mut req: Request<State>| async move {
+            // TODO: handle text/plain body
+            let message: raccord::ServerMessage = req.body_json().await?;
+            // TODO: log(warn) if :channel != message.channel etc
+            let message: Message = (&message).into();
+            let event = Event::MessageCreate(Box::new(MessageCreate(message)));
+            req.state().ghosts.send((0, event)).await?;
+            Ok(Response::new(StatusCode::NoContent))
+        });
+
+    app.at("/ghost/direct/channel/:channel/message")
+        .post(|mut req: Request<State>| async move {
+            // TODO: handle text/plain body
+            let message: raccord::DirectMessage = req.body_json().await?;
+            // TODO: log(warn) if :channel != message.channel
+            let message: Message = (&message).into();
+            let event = Event::MessageCreate(Box::new(MessageCreate(message)));
+            req.state().ghosts.send((0, event)).await?;
+            Ok(Response::new(StatusCode::NoContent))
+        });
 
     app.listen(bind).await?;
     Ok(())
@@ -204,12 +240,13 @@ mod raccord {
             embed::Embed,
             message::{
                 Message as DisMessage, MessageApplication, MessageFlags as DisMessageFlags,
-                MessageReaction, MessageType,
+                MessageReaction, MessageType as DisMessageType,
             },
             Attachment,
         },
         gateway::presence::Status,
-        guild::Member as DisMember,
+        guild::{Member as DisMember, PartialMember},
+        id::{ChannelId, GuildId, MessageId, RoleId, UserId},
         user::User as DisUser,
     };
 
@@ -348,10 +385,13 @@ mod raccord {
         }
     }
 
-    #[derive(Clone, Debug, Serialize)]
+    #[derive(Clone, Debug, Serialize, Deserialize)]
     pub struct User {
         pub id: u64,
         pub name: String,
+        #[serde(default)]
+        pub discriminator: String,
+        #[serde(default)]
         pub bot: bool,
     }
 
@@ -359,17 +399,41 @@ mod raccord {
         fn from(dis: &DisUser) -> Self {
             Self {
                 id: dis.id.0,
+                discriminator: dis.discriminator.clone(),
                 name: dis.name.clone(),
                 bot: dis.bot,
             }
         }
     }
 
-    #[derive(Clone, Debug, Serialize)]
+    impl From<&User> for DisUser {
+        fn from(rac: &User) -> Self {
+            Self {
+                id: UserId(rac.id),
+                discriminator: rac.discriminator.clone(),
+                name: rac.name.clone(),
+                bot: rac.bot,
+
+                avatar: Default::default(),
+                email: Default::default(),
+                flags: Default::default(),
+                locale: Default::default(),
+                mfa_enabled: Default::default(),
+                premium_type: Default::default(),
+                public_flags: Default::default(),
+                system: Default::default(),
+                verified: Default::default(),
+            }
+        }
+    }
+
+    #[derive(Clone, Debug, Serialize, Deserialize)]
     pub struct Member {
         pub user: User,
         pub server_id: u64,
+        #[serde(default)]
         pub roles: Option<Vec<u64>>,
+        #[serde(default)]
         pub pseudonym: Option<String>,
     }
 
@@ -394,6 +458,22 @@ mod raccord {
                 server_id: dis.guild_id.0,
                 roles: Some(dis.roles.iter().map(|role| role.0).collect()),
                 pseudonym: dis.nick.clone(),
+            }
+        }
+    }
+
+    impl From<&Member> for PartialMember {
+        fn from(rac: &Member) -> Self {
+            Self {
+                roles: rac
+                    .roles
+                    .as_ref()
+                    .map(|v| v.into_iter().map(|r| RoleId(*r)).collect())
+                    .unwrap_or_default(),
+
+                deaf: Default::default(),
+                mute: Default::default(),
+                joined_at: Default::default(),
             }
         }
     }
@@ -426,7 +506,7 @@ mod raccord {
         }
     }
 
-    #[derive(Clone, Copy, Debug, Serialize)]
+    #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
     #[serde(rename_all = "kebab-case")]
     pub enum MessageFlag {
         Crossposted,
@@ -456,6 +536,31 @@ mod raccord {
             }
             flags
         }
+
+        pub fn to_discord(rac: &[Self]) -> Option<DisMessageFlags> {
+            if rac.is_empty() {
+                return None;
+            }
+
+            let mut flags = DisMessageFlags::empty();
+            if rac.contains(&MessageFlag::Crossposted) {
+                flags.insert(DisMessageFlags::CROSSPOSTED);
+            }
+            if rac.contains(&MessageFlag::IsCrosspost) {
+                flags.insert(DisMessageFlags::IS_CROSSPOST);
+            }
+            if rac.contains(&MessageFlag::SuppressEmbeds) {
+                flags.insert(DisMessageFlags::SUPPRESS_EMBEDS);
+            }
+            if rac.contains(&MessageFlag::SourceMessageDeleted) {
+                flags.insert(DisMessageFlags::SOURCE_MESSAGE_DELETED);
+            }
+            if rac.contains(&MessageFlag::Urgent) {
+                flags.insert(DisMessageFlags::URGENT);
+            }
+
+            Some(flags)
+        }
     }
 
     impl fmt::Display for MessageFlag {
@@ -475,8 +580,78 @@ mod raccord {
             )
         }
     }
+    #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+    #[serde(rename_all = "kebab-case")]
+    pub enum MessageType {
+        Regular,
+        RecipientAdd,
+        RecipientRemove,
+        Call,
+        ChannelNameChange,
+        ChannelIconChange,
+        ChannelMessagePinned,
+        GuildMemberJoin,
+        UserPremiumSub,
+        UserPremiumSubTier1,
+        UserPremiumSubTier2,
+        UserPremiumSubTier3,
+        ChannelFollowAdd,
+        GuildDiscoveryDisqualified,
+        GuildDiscoveryRequalified,
+    }
 
-    #[derive(Clone, Debug, Serialize)]
+    impl Default for MessageType {
+        fn default() -> Self {
+            Self::Regular
+        }
+    }
+
+    impl From<DisMessageType> for MessageType {
+        fn from(dis: DisMessageType) -> Self {
+            use MessageType::*;
+            match dis {
+                DisMessageType::Regular => Regular,
+                DisMessageType::RecipientAdd => RecipientAdd,
+                DisMessageType::RecipientRemove => RecipientRemove,
+                DisMessageType::Call => Call,
+                DisMessageType::ChannelNameChange => ChannelNameChange,
+                DisMessageType::ChannelIconChange => ChannelIconChange,
+                DisMessageType::ChannelMessagePinned => ChannelMessagePinned,
+                DisMessageType::GuildMemberJoin => GuildMemberJoin,
+                DisMessageType::UserPremiumSub => UserPremiumSub,
+                DisMessageType::UserPremiumSubTier1 => UserPremiumSubTier1,
+                DisMessageType::UserPremiumSubTier2 => UserPremiumSubTier2,
+                DisMessageType::UserPremiumSubTier3 => UserPremiumSubTier3,
+                DisMessageType::ChannelFollowAdd => ChannelFollowAdd,
+                DisMessageType::GuildDiscoveryDisqualified => GuildDiscoveryDisqualified,
+                DisMessageType::GuildDiscoveryRequalified => GuildDiscoveryRequalified,
+            }
+        }
+    }
+    impl From<MessageType> for DisMessageType {
+        fn from(rac: MessageType) -> Self {
+            use DisMessageType::*;
+            match rac {
+                MessageType::Regular => Regular,
+                MessageType::RecipientAdd => RecipientAdd,
+                MessageType::RecipientRemove => RecipientRemove,
+                MessageType::Call => Call,
+                MessageType::ChannelNameChange => ChannelNameChange,
+                MessageType::ChannelIconChange => ChannelIconChange,
+                MessageType::ChannelMessagePinned => ChannelMessagePinned,
+                MessageType::GuildMemberJoin => GuildMemberJoin,
+                MessageType::UserPremiumSub => UserPremiumSub,
+                MessageType::UserPremiumSubTier1 => UserPremiumSubTier1,
+                MessageType::UserPremiumSubTier2 => UserPremiumSubTier2,
+                MessageType::UserPremiumSubTier3 => UserPremiumSubTier3,
+                MessageType::ChannelFollowAdd => ChannelFollowAdd,
+                MessageType::GuildDiscoveryDisqualified => GuildDiscoveryDisqualified,
+                MessageType::GuildDiscoveryRequalified => GuildDiscoveryRequalified,
+            }
+        }
+    }
+
+    #[derive(Clone, Debug, Serialize, Deserialize)]
     pub struct ServerMessage {
         pub id: u64,
         pub server_id: u64,
@@ -484,16 +659,23 @@ mod raccord {
         pub author: Member,
 
         pub timestamp_created: String,
+        #[serde(default)]
         pub timestamp_edited: Option<String>,
 
+        #[serde(default)]
         pub kind: MessageType,
         pub content: String,
 
+        #[serde(default)]
         pub attachments: Vec<Attachment>,
+        #[serde(default)]
         pub embeds: Vec<Embed>,
+        #[serde(default)]
         pub reactions: Vec<MessageReaction>,
 
+        #[serde(default)]
         pub application: Option<MessageApplication>,
+        #[serde(default)]
         pub flags: Vec<MessageFlag>,
     }
 
@@ -565,7 +747,7 @@ mod raccord {
                 timestamp_created: dis.timestamp.clone(),
                 timestamp_edited: dis.edited_timestamp.clone(),
 
-                kind: dis.kind,
+                kind: dis.kind.into(),
                 content: dis.content.clone(),
 
                 attachments: dis.attachments.clone(),
@@ -578,23 +760,66 @@ mod raccord {
         }
     }
 
-    #[derive(Clone, Debug, Serialize)]
+    impl From<&ServerMessage> for DisMessage {
+        /// Convert from a Raccord ServerMessage to a Discord Message
+        fn from(rac: &ServerMessage) -> Self {
+            Self {
+                id: MessageId(rac.id),
+                guild_id: Some(GuildId(rac.server_id)),
+                channel_id: ChannelId(rac.channel_id),
+                author: (&rac.author.user).into(),
+                member: Some((&rac.author).into()),
+
+                timestamp: rac.timestamp_created.clone(),
+                edited_timestamp: rac.timestamp_edited.clone(),
+
+                kind: rac.kind.into(),
+                content: rac.content.clone(),
+
+                attachments: rac.attachments.clone(),
+                embeds: rac.embeds.clone(),
+                reactions: rac.reactions.clone(),
+
+                application: rac.application.clone(),
+                flags: MessageFlag::to_discord(&rac.flags),
+
+                activity: Default::default(),
+                mention_channels: Default::default(),
+                mention_everyone: Default::default(),
+                mention_roles: Default::default(),
+                mentions: Default::default(),
+                reference: Default::default(),
+                tts: Default::default(),
+                webhook_id: Default::default(),
+                pinned: Default::default(),
+            }
+        }
+    }
+
+    #[derive(Clone, Debug, Serialize, Deserialize)]
     pub struct DirectMessage {
         pub id: u64,
         pub channel_id: u64,
         pub author: User,
 
         pub timestamp_created: String,
+        #[serde(default)]
         pub timestamp_edited: Option<String>,
 
+        #[serde(default)]
         pub kind: MessageType,
         pub content: String,
 
+        #[serde(default)]
         pub attachments: Vec<Attachment>,
+        #[serde(default)]
         pub embeds: Vec<Embed>,
+        #[serde(default)]
         pub reactions: Vec<MessageReaction>,
 
+        #[serde(default)]
         pub application: Option<MessageApplication>,
+        #[serde(default)]
         pub flags: Vec<MessageFlag>,
     }
 
@@ -646,7 +871,7 @@ mod raccord {
                 timestamp_created: dis.timestamp.clone(),
                 timestamp_edited: dis.edited_timestamp.clone(),
 
-                kind: dis.kind,
+                kind: dis.kind.into(),
                 content: dis.content.clone(),
 
                 attachments: dis.attachments.clone(),
@@ -655,6 +880,42 @@ mod raccord {
 
                 application: dis.application.clone(),
                 flags: dis.flags.map(MessageFlag::from_discord).unwrap_or_default(),
+            }
+        }
+    }
+
+    impl From<&DirectMessage> for DisMessage {
+        /// Convert from a Raccord ServerMessage to a Discord Message
+        fn from(rac: &DirectMessage) -> Self {
+            Self {
+                id: MessageId(rac.id),
+                guild_id: None,
+                channel_id: ChannelId(rac.channel_id),
+                author: (&rac.author).into(),
+                member: None,
+
+                timestamp: rac.timestamp_created.clone(),
+                edited_timestamp: rac.timestamp_edited.clone(),
+
+                kind: rac.kind.into(),
+                content: rac.content.clone(),
+
+                attachments: rac.attachments.clone(),
+                embeds: rac.embeds.clone(),
+                reactions: rac.reactions.clone(),
+
+                application: rac.application.clone(),
+                flags: MessageFlag::to_discord(&rac.flags),
+
+                activity: Default::default(),
+                mention_channels: Default::default(),
+                mention_everyone: Default::default(),
+                mention_roles: Default::default(),
+                mentions: Default::default(),
+                reference: Default::default(),
+                tts: Default::default(),
+                webhook_id: Default::default(),
+                pinned: Default::default(),
             }
         }
     }
@@ -704,8 +965,6 @@ async fn handle_response<T: Debug + Read + AsyncRead + Unpin>(
     from_channel: Option<ChannelId>,
     _from_user: Option<UserId>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
-    dbg!(&res);
-
     let status = res.status();
     if status.is_informational() {
         warn!("unhandled information code {:?}", status);
@@ -783,7 +1042,6 @@ async fn handle_response<T: Debug + Read + AsyncRead + Unpin>(
                 loop {
                     if let Some(line) = lines.next().await {
                         let line = line?;
-                        dbg!(&line);
                         let act: raccord::Act = serde_json::from_str(line.trim())?;
                         handle_act(http.clone(), act, default_server_id, default_channel_id)
                             .await?;
