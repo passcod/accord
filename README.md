@@ -4,7 +4,10 @@
   + alpha
   + not production tested
   + covers only a [small](https://github.com/passcod/accord/issues/1) part of the API
-- Releases: none, build from source from `main` branch
+- Releases:
+  + see the [releases tab](https://github.com/passcod/accord/releases) for tagged releases
+  + no pre-built binaries yet, build from source
+  + or with `cargo install --git https://github.com/passcod/accord.git --version 0.0.1`
 - License: [CC-BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)
   + “Uhhh... this isn't a software license?”
   + Yes, but it still functions as a “work” license.
@@ -18,7 +21,7 @@
   + Some example applications would be ace!
   + And of course, handling of more events is most welcome.
 
-## Docs (may not be up to date)
+## Docs
 
 To get started, stand up a server (for example, a PHP standalone server that
 routes everything to `index.php`: `php -S 127.0.0.1:8080 index.php`) and add
