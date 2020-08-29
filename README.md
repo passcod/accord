@@ -336,8 +336,9 @@ ACCORD_COMMAND_PARSE = (?:^!|\s+)(\w+)
 ## Background and Vision
 
 Accord is a Discord API client to power Discord API clients. Like bots. It is itself built on top of
-whichever Discord API library I choose to build it. (Probably Serenity.) So, perhaps it should be
-called a middleware.
+the [Twilight] Discord API library. So, perhaps it should be called a middleware.
+
+[Twilight]: https://github.com/twilight-rs/twilight
 
 Accord is about translating a specialised interface (Discord's API) to a very common interface (HTTP
 calls to a server), and back.
