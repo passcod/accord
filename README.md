@@ -7,7 +7,7 @@
 - Releases:
   + see the [releases tab](https://github.com/passcod/accord/releases) for tagged releases
   + no pre-built binaries yet, build from source
-  + or with `cargo install --git https://github.com/passcod/accord.git --version 0.0.1`
+  + or with `cargo install accord --git https://github.com/passcod/accord.git --branch main --version 0.0.1 --locked`
 - License: [CC-BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)
   + “Uhhh... this isn't a software license?”
   + Yes, but it still functions as a “work” license.
