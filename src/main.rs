@@ -14,12 +14,12 @@ use tide_tracing::TraceMiddleware;
 use tracing::{error, info, trace, warn, Level};
 use tracing_subscriber::FmtSubscriber;
 use twilight::{
-    cache::{
-        twilight_cache_inmemory::config::{EventType, InMemoryConfigBuilder},
+    cache_inmemory::{
+        EventType,
         InMemoryCache,
     },
     gateway::{
-        cluster::{Cluster, ClusterConfig},
+        cluster::{Cluster},
         Event,
     },
     http::Client as HttpClient,
@@ -127,7 +127,7 @@ async fn main_forward(
     }
 
     // TODO: env var control for intents (notably for privileged intents)
-    let mut config = ClusterConfig::builder(&token).intents(Some(
+    let mut config = Cluster::builder(&token).intents(Some(
         GatewayIntents::DIRECT_MESSAGES
             | GatewayIntents::GUILD_MESSAGES
             | GatewayIntents::GUILD_MEMBERS,
@@ -137,7 +137,7 @@ async fn main_forward(
         config = config.presence(presence);
     }
 
-    let cluster = Cluster::new(config.build()).await?;
+    let cluster = config.build().await?;
 
     let cluster_spawn = cluster.clone();
     spawn(async move {
@@ -146,8 +146,7 @@ async fn main_forward(
 
     let http = HttpClient::new(&token);
 
-    let cache = InMemoryCache::from(
-        InMemoryConfigBuilder::new()
+    let cache = InMemoryCache::builder()
             .event_types(
                 EventType::MESSAGE_CREATE
                     | EventType::MESSAGE_DELETE
@@ -158,15 +157,15 @@ async fn main_forward(
                     | EventType::MEMBER_UPDATE
                     | EventType::MEMBER_REMOVE,
             )
-            .build(),
-    );
+            .build()
+    ;
 
-    let solids = cluster.events().await;
+    let solids = cluster.events();
     let mut events = solids.merge(ghosts);
 
-    while let Some(event) = events.next().await {
-        cache.update(&event.1).await.expect("FATAL: cache failed");
-        spawn(handle_event(target.clone(), event, http.clone()));
+    while let Some((shard_id, event)) = events.next().await {
+        cache.update(&event);
+        spawn(handle_event(target.clone(), shard_id, event, http.clone()));
     }
 
     Ok(())
@@ -446,7 +445,7 @@ mod raccord {
                     .member
                     .as_ref()
                     .map(|mem| mem.roles.iter().map(|role| role.0).collect()),
-                pseudonym: None,
+                pseudonym: dis.member.as_ref().and_then(|mem| mem.nick.clone()),
             }
         }
     }
@@ -470,6 +469,7 @@ mod raccord {
                     .as_ref()
                     .map(|v| v.into_iter().map(|r| RoleId(*r)).collect())
                     .unwrap_or_default(),
+                nick: rac.pseudonym.clone(),
 
                 deaf: Default::default(),
                 mute: Default::default(),
@@ -1133,11 +1133,12 @@ async fn handle_act(
 
 async fn handle_event(
     target: Arc<raccord::Client>,
-    event: (u64, Event),
+    shard_id: u64,
+    event: Event,
     http: HttpClient,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     match event {
-        (_, Event::MessageCreate(message)) if message.guild_id.is_some() => {
+        Event::MessageCreate(message) if message.guild_id.is_some() => {
             let msg = raccord::ServerMessage::from(&**message);
             let res = if let Some(command) = target.parse_command(&msg.content) {
                 target.post(raccord::Command {
@@ -1157,7 +1158,7 @@ async fn handle_event(
             )
             .await?;
         }
-        (_, Event::MessageCreate(message)) => {
+        Event::MessageCreate(message) => {
             let msg = raccord::DirectMessage::from(&**message);
             let res = if let Some(command) = target.parse_command(&msg.content) {
                 target.post(raccord::Command {
@@ -1170,14 +1171,14 @@ async fn handle_event(
             .await?;
             handle_response(res, http, None, Some(message.channel_id), None).await?;
         }
-        (_, Event::MemberAdd(mem)) => {
+        Event::MemberAdd(mem) => {
             let member = raccord::Member::from(&**mem);
             let res = target.post(raccord::ServerJoin(member))?.await?;
             handle_response(res, http, Some(mem.guild_id), None, None).await?;
         }
-        (shard, Event::ShardConnected(_)) => {
-            info!("connected on shard {}", shard);
-            let res = target.post(raccord::Connected { shard })?.await?;
+        Event::ShardConnected(_) => {
+            info!("connected on shard {}", shard_id);
+            let res = target.post(raccord::Connected { shard: shard_id })?.await?;
             handle_response(res, http, None, None, None).await?;
         }
         _ => {}
