@@ -188,7 +188,7 @@ received, so you can stream multiple acts with arbitrary delays in-between, and
 send "keepalives" to make sure the connection stays open in the form of
 additional newlines. Lines are trimmed of leading and trailing whitespace
 before parsing as JSON, so you can pad out your messages to ~4096 bytes to
-reach bufferring thresholds.
+reach buffering thresholds.
 
 (For this reason, on top of simple performance concerns, your server _must_
 support multiple simultaneous connections.)
@@ -313,7 +313,7 @@ There are two (optional) environment variables controlling this:
    non-overlapping captures are collected and considered the "command" part of
    the message.
 
-The endpoint is the contructed to `/command/` followed by the parsed and
+The endpoint is then constructed to `/command/` followed by the parsed and
 collected "command" parts as above joined by slashes.
 
 For example, `!pick me` could be parsed to the endpoint `/command/pick/me`, or
@@ -354,7 +354,7 @@ within the Accord instance they are sent to.
 The primary purpose of ghosts is to initiate actions without external stimuli.
 For example, a "clock" bot that posts a message every hour can summon, every
 hour, a ghost that sends the message `!clock`. Your server will then receive a
-request at `/command/clock`, answer approriately, and Accord will post the
+request at `/command/clock`, answer appropriately, and Accord will post the
 reply up on Discord.
 
 Ghosts can also be used to invoke a command from another command. For example,
@@ -378,7 +378,7 @@ to `/ghost/server/123/channel/456/message` with the JSON body:
   "server_id": 123,
   "channel_id": 456,
   "author": {
-    "server_id": 123
+    "server_id": 123,
     "user": {
       "id": 0,
       "name": "a ghost"
@@ -500,7 +500,7 @@ Because Discord is one thing, but what if you had this same kind of gateway for 
 Zulip? IRC? Slack? Email? etc
 
 All these have anywhere from slightly to majorly different models in how they operate, but you still
-have a core mechanic of posting messages and expecting answers. You'll probably have subtilities and
+have a core mechanic of posting messages and expecting answers. You'll probably have subtleties and
 adaptations, but what if you could reuse vast swathes of functionality by _rewriting some routes_?
 
 The first example above, a bot that rolls a die, could be the exact same backend program served for
