@@ -32,6 +32,18 @@ version = "0.13.0"
 default-features = false
 features = ["h1-server"]
 
-[dependencies.twilight]
+[dependencies.twilight-cache-inmemory]
+branch = "trunk"
+git = "https://github.com/twilight-rs/twilight.git"
+
+[dependencies.twilight-gateway]
+branch = "trunk"
+git = "https://github.com/twilight-rs/twilight.git"
+
+[dependencies.twilight-http]
+branch = "trunk"
+git = "https://github.com/twilight-rs/twilight.git"
+
+[dependencies.twilight-model]
 branch = "trunk"
 git = "https://github.com/twilight-rs/twilight.git"

@@ -13,25 +13,23 @@ use tide::Server;
 use tide_tracing::TraceMiddleware;
 use tracing::{error, info, trace, warn, Level};
 use tracing_subscriber::FmtSubscriber;
-use twilight::{
-    cache_inmemory::{
+    use twilight_cache_inmemory::{
         EventType,
         InMemoryCache,
-    },
-    gateway::{
+    };
+    use twilight_gateway::{
         cluster::{Cluster},
         Event,
-    },
-    http::Client as HttpClient,
-    model::{
+    };
+    use twilight_http::Client as HttpClient;
+    use twilight_model::{
         gateway::{
             payload::update_status::UpdateStatusInfo,
             presence::{Activity, ActivityType, Status},
-            GatewayIntents,
+            Intents,
         },
         id::{ChannelId, GuildId, RoleId, UserId},
-    },
-};
+    };
 
 #[async_std::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -128,9 +126,9 @@ async fn main_forward(
 
     // TODO: env var control for intents (notably for privileged intents)
     let mut config = Cluster::builder(&token).intents(Some(
-        GatewayIntents::DIRECT_MESSAGES
-            | GatewayIntents::GUILD_MESSAGES
-            | GatewayIntents::GUILD_MEMBERS,
+        Intents::DIRECT_MESSAGES
+            | Intents::GUILD_MESSAGES
+            | Intents::GUILD_MEMBERS,
     ));
 
     if let Some(presence) = update_status {
@@ -176,7 +174,7 @@ async fn main_reverse(
     ghosts: Sender<(u64, Event)>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     use tide::{Request, Response, StatusCode};
-    use twilight::model::{channel::Message, gateway::payload::MessageCreate};
+    use twilight_model::{channel::Message, gateway::payload::MessageCreate};
 
     #[derive(Clone, Debug)]
     struct State {
@@ -234,7 +232,7 @@ mod raccord {
     use serde::{Deserialize, Serialize};
     use std::{error::Error, fmt, time::Duration};
     use tracing::info;
-    use twilight::model::{
+    use twilight_model::{
         channel::{
             embed::Embed,
             message::{
