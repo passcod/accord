@@ -18,6 +18,10 @@ tide-tracing = "0.0.5"
 tracing = "0.1.18"
 tracing-log = "0.1.1"
 tracing-subscriber = "0.2.10"
+twilight-cache-inmemory = "0.1.0"
+twilight-gateway = "0.1.0"
+twilight-http = "0.1.0"
+twilight-model = "0.1.0"
 
 [dependencies.async-std]
 version = "1.6.2"
@@ -31,19 +35,3 @@ features = ["json"]
 version = "0.13.0"
 default-features = false
 features = ["h1-server"]
-
-[dependencies.twilight-cache-inmemory]
-branch = "trunk"
-git = "https://github.com/twilight-rs/twilight.git"
-
-[dependencies.twilight-gateway]
-branch = "trunk"
-git = "https://github.com/twilight-rs/twilight.git"
-
-[dependencies.twilight-http]
-branch = "trunk"
-git = "https://github.com/twilight-rs/twilight.git"
-
-[dependencies.twilight-model]
-branch = "trunk"
-git = "https://github.com/twilight-rs/twilight.git"

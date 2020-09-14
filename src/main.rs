@@ -125,11 +125,11 @@ async fn main_forward(
     }
 
     // TODO: env var control for intents (notably for privileged intents)
-    let mut config = Cluster::builder(&token).intents(Some(
+    let mut config = Cluster::builder(&token).intents(
         Intents::DIRECT_MESSAGES
             | Intents::GUILD_MESSAGES
             | Intents::GUILD_MEMBERS,
-    ));
+    );
 
     if let Some(presence) = update_status {
         config = config.presence(presence);
