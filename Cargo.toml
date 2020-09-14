@@ -1,10 +1,18 @@
 [package]
-name = "accord"
+name = "passcod-accord"
 version = "0.0.1"
 authors = ["Félix Saparelli <felix@passcod.name>"]
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "Discord API client to power Discord API clients via the power of love, friendship, and HTTP"
+documentation = "https://github.com/passcod/accord/#readme"
+license-file = "LICENSE"
+keywords = ["discord", "http"]
+
+default-run = "accord"
+
+[[bin]]
+name = "accord"
 
 [dependencies]
 async-channel = "1.4.1"

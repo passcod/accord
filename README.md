@@ -1,3 +1,7 @@
+[![Crate release version](https://flat.badgen.net/crates/v/passcod-accord)](https://crates.io/crates/passcod-accord)
+[![Crate license: CC BY-NC-SA 4.0](https://flat.badgen.net/badge/license/CC%20BY-NC-SA%204.0)](./LICENSE)
+![MSRV: latest stable](https://flat.badgen.net/badge/MSRV/latest stable/orange)
+
 # ![Accord: interfaces between discord and a local http server](./res/pitch.png)
 
 - Status:
@@ -7,11 +11,15 @@
 - Releases:
   + see the [releases tab](https://github.com/passcod/accord/releases) for tagged releases
   + no pre-built binaries yet, build from source
-  + or with `cargo install accord --git https://github.com/passcod/accord.git --branch main --version 0.0.1 --locked`
-- License: [CC-BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)
+  + or with `cargo install passcod-accord`
+- License: [CC-BY-NC-SA 4.0](./LICENSE)
   + “Uhhh... this isn't a software license?”
   + Yes, but it still functions as a “work” license.
   + It may be changed later.
+  + It's not open source!
+  + Yes, this is by design.
+  + What if I want to use it in a commercial context?
+  + [See the top of the LICENSE file](./LICENSE)
 - Contribute: you can!
   + Areas in need of love: everywhere.
   + The code is all currently in a single file. Split it up!
