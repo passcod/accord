@@ -1,6 +1,6 @@
 [![Crate release version](https://flat.badgen.net/crates/v/passcod-accord)](https://crates.io/crates/passcod-accord)
 [![Crate license: CC BY-NC-SA 4.0](https://flat.badgen.net/badge/license/CC%20BY-NC-SA%204.0)](./LICENSE)
-![MSRV: latest stable](https://flat.badgen.net/badge/MSRV/latest stable/orange)
+![MSRV: latest stable](https://flat.badgen.net/badge/MSRV/latest%20stable/orange)
 
 # ![Accord: interfaces between discord and a local http server](./res/pitch.png)
 
