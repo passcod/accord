@@ -22,7 +22,6 @@
   + [See the top of the LICENSE file](./LICENSE)
 - Contribute: you can!
   + Areas in need of love: everywhere.
-  + The code is all currently in a single file. Split it up!
   + More descriptive erroring and warnings would help lots!
   + Basic response timing stats could be helpful!
   + Anywhere there's a TODO comment...
