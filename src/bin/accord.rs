@@ -1,4 +1,4 @@
-use accord::{forward, raccord, reverse};
+use accord::{act, raccord, reverse, Forward};
 use async_channel::unbounded;
 use async_std::prelude::FutureExt;
 use std::{env, error::Error, sync::Arc};
@@ -24,18 +24,27 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         command_parse,
     ));
 
-    let (s, r) = unbounded();
+    let fwd = Forward::init(token, target.clone()).await?;
 
-    match forward::worker(token, target, r)
-        .join(reverse::server(bind, s))
+    let (act_s, act_r) = unbounded();
+    let (ghost_s, ghost_r) = unbounded();
+
+    // TODO: sort out that match into something a little less of a mess
+    match act::play_to_discord(fwd.http.clone(), act_r)
+        .join(reverse::server(bind, ghost_s))
+        .join(fwd.worker(target, ghost_r, act_s))
         .await
     {
-        (Ok(_), Ok(_)) => Ok(()),
-        (Ok(_), Err(e)) => Err(e),
-        (Err(e), Ok(_)) => Err(e),
-        (Err(e), Err(f)) => {
+        ((Ok(_), Ok(_)), Ok(_)) => Ok(()),
+        ((Ok(_), Ok(_)), Err(e)) | ((Ok(_), Err(e)), Ok(_)) | ((Err(e), Ok(_)), Ok(_)) => Err(e),
+        ((Ok(_), Err(f)), Err(g)) | ((Err(f), Ok(_)), Err(g)) | ((Err(f), Err(g)), Ok(_)) => {
+            eprintln!("{}", f);
+            Err(g)
+        }
+        ((Err(e), Err(f)), Err(g)) => {
             eprintln!("{}", e);
-            Err(f)
+            eprintln!("{}", f);
+            Err(g)
         }
     }
 }

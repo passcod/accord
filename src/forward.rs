@@ -1,4 +1,4 @@
-use async_channel::Receiver;
+use async_channel::{Receiver, Sender};
 use async_std::{prelude::StreamExt, task::spawn};
 use futures::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use isahc::{http::Response, ResponseExt};
@@ -13,115 +13,147 @@ use twilight_model::{
         presence::{Activity, ActivityType, Status},
         Intents,
     },
-    id::{ChannelId, GuildId, RoleId, UserId},
+    id::{ChannelId, GuildId, UserId},
 };
 
-use crate::{error, raccord};
+use crate::{
+    act::{Act, Stage},
+    raccord,
+};
 
-pub async fn worker(
-    token: String,
-    target: Arc<raccord::Client>,
-    ghosts: Receiver<(u64, Event)>,
-) -> Result<(), Box<dyn Error + Send + Sync>> {
-    let mut update_status = None;
-    if let Ok(mut connecting_res) = target.get(raccord::Connecting)?.await {
-        if connecting_res.status().is_success() {
-            let content_type = connecting_res
-                .headers()
-                .get("content-type")
-                .and_then(|s| s.to_str().ok())
-                .and_then(|s| mime::Mime::from_str(s).ok())
-                .unwrap_or(mime::APPLICATION_OCTET_STREAM);
+pub struct Forward {
+    pub cache: InMemoryCache,
+    pub cluster: Cluster,
+    pub http: HttpClient,
+}
 
-            if content_type == mime::APPLICATION_JSON {
-                let presence: raccord::Presence = connecting_res.json()?;
+impl Forward {
+    pub async fn init(
+        token: String,
+        target: Arc<raccord::Client>,
+    ) -> Result<Self, Box<dyn Error + Send + Sync>> {
+        let mut update_status = None;
+        if let Ok(mut connecting_res) = target.get(raccord::Connecting)?.await {
+            if connecting_res.status().is_success() {
+                let content_type = connecting_res
+                    .headers()
+                    .get("content-type")
+                    .and_then(|s| s.to_str().ok())
+                    .and_then(|s| mime::Mime::from_str(s).ok())
+                    .unwrap_or(mime::APPLICATION_OCTET_STREAM);
 
-                update_status = Some(UpdateStatusInfo {
-                    afk: presence.afk.unwrap_or(true),
-                    since: presence.since,
-                    status: presence.status.unwrap_or(Status::Online),
-                    game: presence.activity.map(|activity| {
-                        let (kind, name) = match activity {
-                            raccord::Activity::Playing { name } => (ActivityType::Playing, name),
-                            raccord::Activity::Streaming { name } => {
-                                (ActivityType::Streaming, name)
+                if content_type == mime::APPLICATION_JSON {
+                    let presence: raccord::Presence = connecting_res.json()?;
+
+                    update_status = Some(UpdateStatusInfo {
+                        afk: presence.afk.unwrap_or(true),
+                        since: presence.since,
+                        status: presence.status.unwrap_or(Status::Online),
+                        game: presence.activity.map(|activity| {
+                            let (kind, name) = match activity {
+                                raccord::Activity::Playing { name } => {
+                                    (ActivityType::Playing, name)
+                                }
+                                raccord::Activity::Streaming { name } => {
+                                    (ActivityType::Streaming, name)
+                                }
+                                raccord::Activity::Listening { name } => {
+                                    (ActivityType::Listening, name)
+                                }
+                                raccord::Activity::Watching { name } => {
+                                    (ActivityType::Watching, name)
+                                }
+                                raccord::Activity::Custom { name } => (ActivityType::Custom, name),
+                            };
+
+                            Activity {
+                                application_id: None,
+                                assets: None,
+                                created_at: None,
+                                details: None,
+                                emoji: None,
+                                flags: None,
+                                id: None,
+                                instance: None,
+                                party: None,
+                                secrets: None,
+                                state: None,
+                                timestamps: None,
+                                url: None,
+                                kind,
+                                name,
                             }
-                            raccord::Activity::Listening { name } => {
-                                (ActivityType::Listening, name)
-                            }
-                            raccord::Activity::Watching { name } => (ActivityType::Watching, name),
-                            raccord::Activity::Custom { name } => (ActivityType::Custom, name),
-                        };
-
-                        Activity {
-                            application_id: None,
-                            assets: None,
-                            created_at: None,
-                            details: None,
-                            emoji: None,
-                            flags: None,
-                            id: None,
-                            instance: None,
-                            party: None,
-                            secrets: None,
-                            state: None,
-                            timestamps: None,
-                            url: None,
-                            kind,
-                            name,
-                        }
-                    }),
-                });
+                        }),
+                    });
+                }
             }
         }
+
+        // TODO: env var control for intents (notably for privileged intents)
+        let mut config = Cluster::builder(&token)
+            .intents(Intents::DIRECT_MESSAGES | Intents::GUILD_MESSAGES | Intents::GUILD_MEMBERS);
+
+        if let Some(presence) = update_status {
+            config = config.presence(presence);
+        }
+
+        let cluster = config.build().await?;
+
+        let cluster_spawn = cluster.clone();
+        spawn(async move {
+            cluster_spawn.up().await;
+        });
+
+        let http = HttpClient::new(&token);
+
+        let cache = InMemoryCache::builder()
+            .event_types(
+                EventType::MESSAGE_CREATE
+                    | EventType::MESSAGE_DELETE
+                    | EventType::MESSAGE_DELETE_BULK
+                    | EventType::MESSAGE_UPDATE
+                    | EventType::MEMBER_ADD
+                    | EventType::MEMBER_CHUNK
+                    | EventType::MEMBER_UPDATE
+                    | EventType::MEMBER_REMOVE,
+            )
+            .build();
+
+        Ok(Self {
+            cache,
+            cluster,
+            http,
+        })
     }
 
-    // TODO: env var control for intents (notably for privileged intents)
-    let mut config = Cluster::builder(&token)
-        .intents(Intents::DIRECT_MESSAGES | Intents::GUILD_MESSAGES | Intents::GUILD_MEMBERS);
+    pub async fn worker(
+        self,
+        target: Arc<raccord::Client>,
+        ghosts: Receiver<(u64, Event)>,
+        player: Sender<Stage>,
+    ) -> Result<(), Box<dyn Error + Send + Sync>> {
+        let solids = self.cluster.events();
+        let mut events = solids.merge(ghosts);
 
-    if let Some(presence) = update_status {
-        config = config.presence(presence);
+        while let Some((shard_id, event)) = events.next().await {
+            self.cache.update(&event);
+            spawn(handle_event(
+                target.clone(),
+                shard_id,
+                event,
+                player.clone(),
+            ));
+        }
+
+        Ok(())
     }
-
-    let cluster = config.build().await?;
-
-    let cluster_spawn = cluster.clone();
-    spawn(async move {
-        cluster_spawn.up().await;
-    });
-
-    let http = HttpClient::new(&token);
-
-    let cache = InMemoryCache::builder()
-        .event_types(
-            EventType::MESSAGE_CREATE
-                | EventType::MESSAGE_DELETE
-                | EventType::MESSAGE_DELETE_BULK
-                | EventType::MESSAGE_UPDATE
-                | EventType::MEMBER_ADD
-                | EventType::MEMBER_CHUNK
-                | EventType::MEMBER_UPDATE
-                | EventType::MEMBER_REMOVE,
-        )
-        .build();
-
-    let solids = cluster.events();
-    let mut events = solids.merge(ghosts);
-
-    while let Some((shard_id, event)) = events.next().await {
-        cache.update(&event);
-        spawn(handle_event(target.clone(), shard_id, event, http.clone()));
-    }
-
-    Ok(())
 }
 
 async fn handle_event(
     target: Arc<raccord::Client>,
     shard_id: u64,
     event: Event,
-    http: HttpClient,
+    player: Sender<Stage>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     match event {
         Event::MessageCreate(message) if message.guild_id.is_some() => {
@@ -137,7 +169,7 @@ async fn handle_event(
             .await?;
             handle_response(
                 res,
-                http,
+                player,
                 Some(message.guild_id.unwrap()),
                 Some(message.channel_id),
                 None,
@@ -155,17 +187,17 @@ async fn handle_event(
                 target.post(msg)
             }?
             .await?;
-            handle_response(res, http, None, Some(message.channel_id), None).await?;
+            handle_response(res, player, None, Some(message.channel_id), None).await?;
         }
         Event::MemberAdd(mem) => {
             let member = raccord::Member::from(&**mem);
             let res = target.post(raccord::ServerJoin(member))?.await?;
-            handle_response(res, http, Some(mem.guild_id), None, None).await?;
+            handle_response(res, player, Some(mem.guild_id), None, None).await?;
         }
         Event::ShardConnected(_) => {
             info!("connected on shard {}", shard_id);
             let res = target.post(raccord::Connected { shard: shard_id })?.await?;
-            handle_response(res, http, None, None, None).await?;
+            handle_response(res, player, None, None, None).await?;
         }
         _ => {}
     }
@@ -175,7 +207,7 @@ async fn handle_event(
 
 async fn handle_response<T: Debug + Read + AsyncRead + Unpin>(
     mut res: Response<T>,
-    http: HttpClient,
+    player: Sender<Stage>,
     from_server: Option<GuildId>,
     from_channel: Option<ChannelId>,
     _from_user: Option<UserId>,
@@ -249,16 +281,27 @@ async fn handle_response<T: Debug + Read + AsyncRead + Unpin>(
 
             if has_content_length {
                 info!("response has content-length, parsing single act");
-                let act: raccord::Act = res.json()?;
-                handle_act(http, act, default_server_id, default_channel_id).await?;
+                let act: Act = res.json()?;
+                player
+                    .send(Stage {
+                        act,
+                        default_server_id,
+                        default_channel_id,
+                    })
+                    .await?;
             } else {
                 info!("response has no content-length, streaming multiple acts");
                 let mut lines = BufReader::new(res.into_body()).lines();
                 loop {
                     if let Some(line) = lines.next().await {
                         let line = line?;
-                        let act: raccord::Act = serde_json::from_str(line.trim())?;
-                        handle_act(http.clone(), act, default_server_id, default_channel_id)
+                        let act: Act = serde_json::from_str(line.trim())?;
+                        player
+                            .send(Stage {
+                                act,
+                                default_server_id,
+                                default_channel_id,
+                            })
                             .await?;
                     } else {
                         break;
@@ -275,78 +318,18 @@ async fn handle_response<T: Debug + Read + AsyncRead + Unpin>(
                 .and_then(|h| h.to_str().ok())
                 .and_then(|s| u64::from_str(s).ok());
 
-            handle_act(
-                http,
-                raccord::Act::CreateMessage {
-                    content,
-                    channel_id: header_channel,
-                },
-                from_server,
-                from_channel,
-            )
-            .await?;
+            player
+                .send(Stage {
+                    act: Act::CreateMessage {
+                        content,
+                        channel_id: header_channel,
+                    },
+                    default_server_id: from_server,
+                    default_channel_id: from_channel,
+                })
+                .await?;
         }
         (t, s) => warn!("unhandled content-type {}/{}", t, s),
-    }
-
-    Ok(())
-}
-
-pub async fn handle_act(
-    http: HttpClient,
-    act: raccord::Act,
-    default_server_id: Option<GuildId>,
-    default_channel_id: Option<ChannelId>,
-) -> Result<(), Box<dyn Error + Send + Sync>> {
-    match act {
-        raccord::Act::CreateMessage {
-            content,
-            channel_id,
-        } => {
-            let channel_id = channel_id
-                .map(ChannelId)
-                .or(default_channel_id)
-                .ok_or(error::MissingChannel)?;
-            http.create_message(channel_id).content(content)?.await?;
-        }
-        raccord::Act::AssignRole {
-            role_id,
-            user_id,
-            server_id,
-            reason,
-        } => {
-            let server_id = server_id
-                .map(GuildId)
-                .or(default_server_id)
-                .ok_or(error::MissingServer)?;
-
-            let mut add = http.add_role(server_id, UserId(user_id), RoleId(role_id));
-
-            if let Some(text) = reason {
-                add = add.reason(text);
-            }
-
-            add.await?;
-        }
-        raccord::Act::RemoveRole {
-            role_id,
-            user_id,
-            server_id,
-            reason,
-        } => {
-            let server_id = server_id
-                .map(GuildId)
-                .or(default_server_id)
-                .ok_or(error::MissingServer)?;
-
-            let mut rm = http.remove_guild_member_role(server_id, UserId(user_id), RoleId(role_id));
-
-            if let Some(text) = reason {
-                rm = rm.reason(text);
-            }
-
-            rm.await?;
-        }
     }
 
     Ok(())

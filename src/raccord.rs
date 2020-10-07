@@ -704,24 +704,3 @@ impl<S: Sendable> Sendable for Command<S> {
         self.message.customise(req)
     }
 }
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum Act {
-    CreateMessage {
-        content: String,
-        channel_id: Option<u64>,
-    },
-    AssignRole {
-        role_id: u64,
-        user_id: u64,
-        server_id: Option<u64>,
-        reason: Option<String>,
-    },
-    RemoveRole {
-        role_id: u64,
-        user_id: u64,
-        server_id: Option<u64>,
-        reason: Option<String>,
-    },
-}
