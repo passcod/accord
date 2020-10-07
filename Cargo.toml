@@ -11,6 +11,9 @@ keywords = ["discord", "http"]
 
 default-run = "accord"
 
+[lib]
+name = "accord"
+
 [[bin]]
 name = "accord"
 
