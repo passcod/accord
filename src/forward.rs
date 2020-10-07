@@ -136,8 +136,8 @@ impl Forward {
         let mut events = solids.merge(ghosts);
 
         while let Some((shard_id, event)) = events.next().await {
-            self.cache.update(&event);
             spawn(handle_event(
+                self.cache.clone(),
                 target.clone(),
                 shard_id,
                 event,
@@ -149,12 +149,15 @@ impl Forward {
     }
 }
 
-async fn handle_event(
+pub async fn handle_event(
+    cache: InMemoryCache,
     target: Arc<raccord::Client>,
     shard_id: u64,
     event: Event,
     player: Sender<Stage>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
+    cache.update(&event);
+
     match event {
         Event::MessageCreate(message) if message.guild_id.is_some() => {
             let msg = raccord::ServerMessage::from(&**message);

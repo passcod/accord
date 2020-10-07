@@ -14,9 +14,6 @@ default-run = "accord"
 [lib]
 name = "accord"
 
-[[bin]]
-name = "accord"
-
 [dependencies]
 async-channel = "1.4.1"
 futures = "0.3.5"

@@ -405,6 +405,23 @@ Currently only the following endpoints are implemented on the ghost interface:
 - server messages: `/ghosts/server/{guild-id}/channel/{channel-id}/message`
 - direct messages: `/ghosts/direct/channel/{channel-id}/message`
 
+### Test facility
+
+To test an Accord server implementation, you could write a harness that queries
+your server, but as there's multiple ways to respond to achieve the same thing
+in Discord, you would either start to replicate some Accord functionality just
+to coalesce these forms, or you would make tests too strict.
+
+Accord provides an `accord-tester` tool which works exactly the same as the main
+program, and takes the same variables (to the exception of `DISCORD_TOKEN`),
+except that instead of connecting to Discord, it only listens on the reverse
+interface, and actions which would be taken on Discord are instead POSTed back
+to your server to `/test/act` in normalised form.
+
+Dealing with the asynchronicity and lack of relationship between requests and
+received replies may be difficult; you can of course opt not to use this tool,
+or to use it for some integration tests only.
+
 ## Credits
 
 - The [logo](./logo.svg) is remixed from [the hands-helping solid Font Awesome icon](https://fontawesome.com/icons/hands-helping?style=solid), licensed under [CC-BY 4.0](https://fontawesome.com/license).
