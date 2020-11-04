@@ -1,16 +1,20 @@
 use accord::{
     act::Stage,
+    forward,
     raccord::{Client, Sendable},
-    reverse, forward,
+    reverse,
 };
 use async_channel::{unbounded, Receiver, Sender};
-use async_std::{task::spawn,prelude::{FutureExt, StreamExt}};
+use async_std::{
+    prelude::{FutureExt, StreamExt},
+    task::spawn,
+};
 use serde::Serialize;
 use std::{env, error::Error, sync::Arc};
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
-use twilight_gateway::{Event};
-use twilight_cache_inmemory::{ InMemoryCache};
+use twilight_cache_inmemory::InMemoryCache;
+use twilight_gateway::Event;
 
 #[async_std::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {

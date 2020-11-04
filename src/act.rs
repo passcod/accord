@@ -2,7 +2,7 @@ use async_channel::Receiver;
 use async_std::{prelude::StreamExt, task::spawn};
 use serde::{Deserialize, Serialize};
 use std::error::Error;
-use twilight_http::Client as HttpClient;
+use twilight_http::{request::AuditLogReason, Client as HttpClient};
 use twilight_model::id::{ChannelId, GuildId, RoleId, UserId};
 
 use crate::error;
@@ -82,7 +82,7 @@ async fn send_to_discord(
             let mut add = http.add_role(server_id, UserId(user_id), RoleId(role_id));
 
             if let Some(text) = reason {
-                add = add.reason(text);
+                add = add.reason(text)?;
             }
 
             add.await?;
@@ -101,7 +101,7 @@ async fn send_to_discord(
             let mut rm = http.remove_guild_member_role(server_id, UserId(user_id), RoleId(role_id));
 
             if let Some(text) = reason {
-                rm = rm.reason(text);
+                rm = rm.reason(text)?;
             }
 
             rm.await?;

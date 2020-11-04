@@ -49,7 +49,7 @@ impl Forward {
                         afk: presence.afk.unwrap_or(true),
                         since: presence.since,
                         status: presence.status.unwrap_or(Status::Online),
-                        game: presence.activity.map(|activity| {
+                        activities: presence.activity.map(|activity| {
                             let (kind, name) = match activity {
                                 raccord::Activity::Playing { name } => {
                                     (ActivityType::Playing, name)
@@ -66,7 +66,7 @@ impl Forward {
                                 raccord::Activity::Custom { name } => (ActivityType::Custom, name),
                             };
 
-                            Activity {
+                            vec![Activity {
                                 application_id: None,
                                 assets: None,
                                 created_at: None,
@@ -82,7 +82,7 @@ impl Forward {
                                 url: None,
                                 kind,
                                 name,
-                            }
+                            }]
                         }),
                     });
                 }
@@ -90,8 +90,10 @@ impl Forward {
         }
 
         // TODO: env var control for intents (notably for privileged intents)
-        let mut config = Cluster::builder(&token)
-            .intents(Intents::DIRECT_MESSAGES | Intents::GUILD_MESSAGES | Intents::GUILD_MEMBERS);
+        let mut config = Cluster::builder(
+            &token,
+            Intents::DIRECT_MESSAGES | Intents::GUILD_MESSAGES | Intents::GUILD_MEMBERS,
+        );
 
         if let Some(presence) = update_status {
             config = config.presence(presence);
