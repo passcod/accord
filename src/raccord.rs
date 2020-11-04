@@ -259,7 +259,7 @@ impl Sendable for ServerJoin {
         req = req
             .header("accord-server-id", self.0.server_id)
             .header("accord-member-id", self.0.user.id)
-            .header("accord-member-name", &self.0.user.name);
+            .header("accord-member-name", &escape(&self.0.user.name));
 
         if let Some(ref pseud) = self.0.pseudonym {
             req = req.header("accord-member-pseudonym", pseud);
@@ -467,11 +467,11 @@ impl Sendable for ServerMessage {
                 if self.author.user.bot { "bot" } else { "user" },
             )
             .header("accord-author-id", self.author.user.id)
-            .header("accord-author-name", &self.author.user.name)
+            .header("accord-author-name", &escape(&self.author.user.name))
             .header("accord-content-length", self.content.len());
 
         if let Some(ref pseud) = self.author.pseudonym {
-            req = req.header("accord-author-pseudonym", pseud);
+            req = req.header("accord-author-pseudonym", escape(pseud));
         }
 
         if let Some(ref roles) = self.author.roles {
@@ -607,7 +607,7 @@ impl Sendable for DirectMessage {
                 if self.author.bot { "bot" } else { "user" }.to_string(),
             )
             .header("accord-author-id", self.author.id)
-            .header("accord-author-name", &self.author.name)
+            .header("accord-author-name", &escape(&self.author.name))
             .header("accord-content-length", self.content.len());
 
         for flag in &self.flags {
@@ -703,4 +703,8 @@ impl<S: Sendable> Sendable for Command<S> {
     fn customise(&self, req: RequestBuilder) -> RequestBuilder {
         self.message.customise(req)
     }
+}
+
+fn escape(s: &str) -> String {
+    s.escape_unicode().to_string()
 }
