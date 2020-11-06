@@ -6,7 +6,7 @@
 
 - Status:
   + alpha
-  + not production tested
+  + in production for my use only
   + covers only a [small](https://github.com/passcod/accord/issues/1) part of the API
 - Releases:
   + see the [releases tab](https://github.com/passcod/accord/releases) for tagged releases
@@ -14,12 +14,11 @@
   + or with `cargo install passcod-accord`
 - License: [CC-BY-NC-SA 4.0](./LICENSE)
   + “Uhhh... this isn't a software license?”
-  + Yes, but it still functions as a “work” license.
-  + It may be changed later.
+    * Indeed. It still functions as a “work” license.
   + It's not open source!
-  + Yes, this is by design.
+    * Yes, this is by design.
   + What if I want to use it in a commercial context?
-  + [See the top of the LICENSE file](./LICENSE)
+    * [See the top of the LICENSE file](./LICENSE)
 - Contribute: you can!
   + Areas in need of love: everywhere.
   + More descriptive erroring and warnings would help lots!
@@ -535,5 +534,3 @@ endpoint, and a Slack-specific poll endpoint.
 
 Yeah, kinda. Instead of a bot that interacts directly with Discord, you have at least two additional
 layers. All that adds is a few tens of milliseconds. What you _gain_ is likely worth it. By a lot.
-
-
