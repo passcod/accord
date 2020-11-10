@@ -36,7 +36,7 @@ version = "1.6.5"
 features = ["attributes", "tokio02", "unstable"]
 
 [dependencies.isahc]
-version = "0.9.11"
+version = "=0.9.10"
 features = ["json"]
 
 [dependencies.tide]
