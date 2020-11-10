@@ -1,6 +1,6 @@
 [package]
 name = "passcod-accord"
-version = "0.0.4"
+version = "0.0.5"
 authors = ["Félix Saparelli <felix@passcod.name>"]
 edition = "2018"
 
