@@ -158,9 +158,9 @@ pub async fn handle_event(
 	event: Event,
 	player: Sender<Stage>,
 ) {
-    if let Err(err) = try_event(cache, target, shard_id, event, player).await {
-        error!("got error while handling event:\n{}", err);
-    }
+	if let Err(err) = try_event(cache, target, shard_id, event, player).await {
+		error!("got error while handling event:\n{}", err);
+	}
 }
 
 pub async fn try_event(
@@ -284,7 +284,7 @@ async fn handle_response<T: Debug + Read + AsyncRead + Unpin>(
 		.and_then(|s| s.to_str().ok())
 		.and_then(|s| mime::Mime::from_str(s).ok())
 		.unwrap_or(mime::APPLICATION_OCTET_STREAM);
-        trace!("receiving content of type: {:?}", content_type);
+	trace!("receiving content of type: {:?}", content_type);
 
 	match (content_type.type_(), content_type.subtype()) {
 		(mime::APPLICATION, mime::JSON) => {
@@ -326,7 +326,7 @@ async fn handle_response<T: Debug + Read + AsyncRead + Unpin>(
 				loop {
 					if let Some(line) = lines.next().await {
 						let line = line?;
-                                            trace!("got line: {:?}", line);
+						trace!("got line: {:?}", line);
 						let act: Act = serde_json::from_str(line.trim())?;
 						trace!("parsed act: {:?}", &act);
 						player
