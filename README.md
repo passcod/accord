@@ -11,7 +11,7 @@
 - Releases:
   + see the [releases tab](https://github.com/passcod/accord/releases) for tagged releases
   + no pre-built binaries yet, build from source
-  + or with `cargo install passcod-accord`
+  + or with `cargo install passcod-accord --locked`
 - License: [CC-BY-NC-SA 4.0](./LICENSE)
   + “Uhhh... this isn't a software license?”
     * Indeed. It still functions as a “work” license.
@@ -421,6 +421,10 @@ to your server to `/test/act` in normalised form.
 Dealing with the asynchronicity and lack of relationship between requests and
 received replies may be difficult; you can of course opt not to use this tool,
 or to use it for some integration tests only.
+
+This tool defaults to `trace` level logging for accord, and you can opt in to
+prettier log messages by adding `pretty` to the `RUST_LOG` list, e.g.
+`RUST_LOG=pretty,info,accord=trace`.
 
 ## Credits
 
