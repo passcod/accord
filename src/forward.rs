@@ -157,6 +157,18 @@ pub async fn handle_event(
 	shard_id: u64,
 	event: Event,
 	player: Sender<Stage>,
+) {
+    if let Err(err) = try_event(cache, target, shard_id, event, player).await {
+        error!("got error while handling event:\n{}", err);
+    }
+}
+
+pub async fn try_event(
+	cache: InMemoryCache,
+	target: Arc<raccord::Client>,
+	shard_id: u64,
+	event: Event,
+	player: Sender<Stage>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
 	cache.update(&event);
 
