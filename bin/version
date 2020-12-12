@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+app="accord"
+crate="passcod-accord"
+mainbranch="main"
+upstream_rx="passcod"
+
+curbranch=$(git rev-parse --abbrev-ref HEAD)
+if [[ "$curbranch" != "$mainbranch" ]]; then
+	echo "Current branch is not $mainbranch, abort!"
+	exit 1
+fi
+
+gitstatus=$(git status --untracked-files=no --porcelain)
+if [[ ! -z "$gitstatus" ]]; then
+	echo "Uncommited files and changes, abort!"
+	exit 2
+fi
+
+upstream=$(git remote -v | grep -i "$upstream_rx" -m1 | awk '{print $1}')
+echo "Upstream remote discovered as: $upstream"
+
+git pull --rebase --autostash $upstream $mainbranch
+
+echo "Fetching tags from upstream"
+git fetch --tags "$upstream"
+
+gitver=$(git describe --tags $(git rev-list --tags --max-count=1))
+echo "Last tag from git: $gitver"
+
+thisver=$(cargo metadata --no-deps --format-version=1 | jq ".packages[] | select(.name == \"$crate\") | .version" -r)
+echo "(Version from Cargo.toml: $thisver)"
+
+set +u
+reqver="$1"
+set -u
+if [[ -z "$reqver" ]]; then
+	curmijor=$(cut -d. -f1-2 <<< "$thisver")
+	curbuild=$(cut -d. -f3 <<< "$thisver")
+	nextbuild=$(expr "$curbuild" + 1)
+
+	nextver="$curmijor.$nextbuild"
+else
+	nextver="$reqver"
+fi
+
+echo "Next version to be $nextver, creating..."
+
+sed -i "s/version = \"$thisver\"/version = \"$nextver\"/" Cargo.toml
+cargo check
+git add Cargo.toml Cargo.lock
+git commit -m "$nextver"
+git tag -fam "v$nextver"{,}
+
+echo "Pushing to upstream"
+git push --follow-tags $upstream $mainbranch
+
+notify-send -t 5000 "$app version $nextver has been pushed! Remember to cargo publish"
+echo "You still need to cargo publish as needed"
