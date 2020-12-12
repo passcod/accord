@@ -6,7 +6,7 @@ use isahc::{
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::{error::Error, fmt, time::Duration};
-use tracing::info;
+use tracing::{info, trace};
 use twilight_model::{
 	channel::{
 		embed::Embed,
@@ -81,13 +81,21 @@ impl Client {
 		&self,
 		payload: S,
 	) -> Result<ResponseFuture, Box<dyn Error + Send + Sync>> {
-		info!("sending {}", std::any::type_name::<S>());
+		trace!(
+			payload_type = std::any::type_name::<S>(),
+			"constructing request"
+		);
 		let req = payload
 			.customise(
 				Request::get(format!("{}{}", self.base, payload.url()))
 					.header("content-type", "application/json"),
 			)
 			.body(())?;
+		info!(
+			to = payload.url().as_str(),
+			"sending {}",
+			std::any::type_name::<S>()
+		);
 		Ok(self.client.send_async(req))
 	}
 
@@ -95,13 +103,21 @@ impl Client {
 		&self,
 		payload: S,
 	) -> Result<ResponseFuture, Box<dyn Error + Send + Sync>> {
-		info!("sending {}", std::any::type_name::<S>());
+		trace!(
+			payload_type = std::any::type_name::<S>(),
+			"constructing request"
+		);
 		let req = payload
 			.customise(
 				Request::post(format!("{}{}", self.base, payload.url()))
 					.header("content-type", "application/json"),
 			)
 			.body(serde_json::to_vec(&payload)?)?;
+		info!(
+			to = payload.url().as_str(),
+			"sending {}",
+			std::any::type_name::<S>()
+		);
 		Ok(self.client.send_async(req))
 	}
 }

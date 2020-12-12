@@ -3,7 +3,7 @@ use async_std::{prelude::StreamExt, task::spawn};
 use futures::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use isahc::{http::Response, ResponseExt};
 use std::{error::Error, fmt::Debug, io::Read, str::FromStr, sync::Arc};
-use tracing::{error, info, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 use twilight_cache_inmemory::{EventType, InMemoryCache};
 use twilight_gateway::{cluster::Cluster, Event};
 use twilight_http::Client as HttpClient;
@@ -170,20 +170,25 @@ pub async fn try_event(
 	event: Event,
 	player: Sender<Stage>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
+	trace!("updating twilight cache");
 	cache.update(&event);
 
 	match event {
 		Event::MessageCreate(message) if message.guild_id.is_some() => {
+			debug!("received guild message create");
 			let msg = raccord::ServerMessage::from(&**message);
 			let res = if let Some(command) = target.parse_command(&msg.content) {
+				trace!("submitting act: {:?}", command);
 				target.post(raccord::Command {
 					command,
 					message: msg,
 				})
 			} else {
+				trace!("submitting act: {:?}", msg);
 				target.post(msg)
 			}?
 			.await?;
+			trace!("handing off response: {:?}", res);
 			handle_response(
 				res,
 				player,
@@ -194,26 +199,34 @@ pub async fn try_event(
 			.await?;
 		}
 		Event::MessageCreate(message) => {
+			debug!("received direct message create");
 			let msg = raccord::DirectMessage::from(&**message);
 			let res = if let Some(command) = target.parse_command(&msg.content) {
+				trace!("submitting act: {:?}", command);
 				target.post(raccord::Command {
 					command,
 					message: msg,
 				})
 			} else {
+				trace!("submitting act: {:?}", msg);
 				target.post(msg)
 			}?
 			.await?;
+			trace!("handing off response: {:?}", res);
 			handle_response(res, player, None, Some(message.channel_id), None).await?;
 		}
 		Event::MemberAdd(mem) => {
+			debug!("received guild member join");
 			let member = raccord::Member::from(&**mem);
+			trace!("submitting act: {:?}", member);
 			let res = target.post(raccord::ServerJoin(member))?.await?;
+			trace!("handing off response: {:?}", res);
 			handle_response(res, player, Some(mem.guild_id), None, None).await?;
 		}
 		Event::ShardConnected(_) => {
 			info!("connected on shard {}", shard_id);
 			let res = target.post(raccord::Connected { shard: shard_id })?.await?;
+			trace!("handing off response: {:?}", res);
 			handle_response(res, player, None, None, None).await?;
 		}
 		_ => {}
@@ -271,6 +284,7 @@ async fn handle_response<T: Debug + Read + AsyncRead + Unpin>(
 		.and_then(|s| s.to_str().ok())
 		.and_then(|s| mime::Mime::from_str(s).ok())
 		.unwrap_or(mime::APPLICATION_OCTET_STREAM);
+        trace!("receiving content of type: {:?}", content_type);
 
 	match (content_type.type_(), content_type.subtype()) {
 		(mime::APPLICATION, mime::JSON) => {
@@ -298,6 +312,7 @@ async fn handle_response<T: Debug + Read + AsyncRead + Unpin>(
 			if has_content_length {
 				info!("response has content-length, parsing single act");
 				let act: Act = res.json()?;
+				trace!("parsed act: {:?}", &act);
 				player
 					.send(Stage {
 						act,
@@ -311,7 +326,9 @@ async fn handle_response<T: Debug + Read + AsyncRead + Unpin>(
 				loop {
 					if let Some(line) = lines.next().await {
 						let line = line?;
+                                            trace!("got line: {:?}", line);
 						let act: Act = serde_json::from_str(line.trim())?;
+						trace!("parsed act: {:?}", &act);
 						player
 							.send(Stage {
 								act,
