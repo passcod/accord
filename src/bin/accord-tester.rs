@@ -11,18 +11,28 @@ use async_std::{
 };
 use serde::Serialize;
 use std::{env, error::Error, sync::Arc};
-use tracing::Level;
-use tracing_subscriber::FmtSubscriber;
+use tracing_subscriber::{fmt::format::FmtSpan, EnvFilter, FmtSubscriber};
 use twilight_cache_inmemory::InMemoryCache;
 use twilight_gateway::Event;
 
 #[async_std::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 	tracing_log::LogTracer::init()?;
-	let subscriber = FmtSubscriber::builder()
-		.with_max_level(Level::INFO)
-		.finish();
-	tracing::subscriber::set_global_default(subscriber)?;
+	let rustlog = env::var("RUST_LOG").unwrap_or(String::from("info,accord=trace"));
+	if rustlog.split(',').any(|p| p == "pretty") {
+		let subscriber = FmtSubscriber::builder()
+			.pretty()
+			.with_span_events(FmtSpan::CLOSE)
+			.with_env_filter(EnvFilter::new(rustlog))
+			.finish();
+		tracing::subscriber::set_global_default(subscriber)?;
+	} else {
+		let subscriber = FmtSubscriber::builder()
+			.with_span_events(FmtSpan::CLOSE)
+			.with_env_filter(EnvFilter::new(rustlog))
+			.finish();
+		tracing::subscriber::set_global_default(subscriber)?;
+	};
 
 	let bind = env::var("ACCORD_BIND").unwrap_or_else(|_| String::from("localhost:8181"));
 	let target_base = env::var("ACCORD_TARGET").expect("FATAL: missing env: ACCORD_TARGET");

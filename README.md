@@ -54,6 +54,7 @@ Done through environment variables.
 | `ACCORD_BIND` | `localhost:8181` | Address to bind the reverse interface to. | `0.0.0.0:1234` |
 | [`ACCORD_COMMAND_MATCH`](#commands) | _none_ | Regex run on messages to match (true/false) as commands. | `^~\w+` |
 | [`ACCORD_COMMAND_PARSE`](#commands) | _none_ | Regex run on commands to parse them out (with captures). | `(?:^~\|\s+)(\w+)` |
+| `RUST_LOG` | `info` | Sets the log level. See [tracing](https://docs.rs/tracing-subscriber/0.2/tracing_subscriber/filter/struct.EnvFilter.html). | `info,accord=debug` |
 
 ### Events to endpoint table
 

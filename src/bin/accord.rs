@@ -2,14 +2,15 @@ use accord::{act, raccord, reverse, Forward};
 use async_channel::unbounded;
 use async_std::prelude::FutureExt;
 use std::{env, error::Error, sync::Arc};
-use tracing::Level;
-use tracing_subscriber::FmtSubscriber;
+use tracing_subscriber::{EnvFilter, FmtSubscriber};
 
 #[async_std::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 	tracing_log::LogTracer::init()?;
 	let subscriber = FmtSubscriber::builder()
-		.with_max_level(Level::INFO)
+		.with_env_filter(EnvFilter::new(
+			env::var("RUST_LOG").unwrap_or(String::from("info")),
+		))
 		.finish();
 	tracing::subscriber::set_global_default(subscriber)?;
 
