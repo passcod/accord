@@ -383,6 +383,7 @@ pub enum MessageType {
 	ChannelFollowAdd,
 	GuildDiscoveryDisqualified,
 	GuildDiscoveryRequalified,
+	Reply,
 }
 
 impl Default for MessageType {
@@ -410,6 +411,7 @@ impl From<DisMessageType> for MessageType {
 			DisMessageType::ChannelFollowAdd => ChannelFollowAdd,
 			DisMessageType::GuildDiscoveryDisqualified => GuildDiscoveryDisqualified,
 			DisMessageType::GuildDiscoveryRequalified => GuildDiscoveryRequalified,
+			DisMessageType::Reply => Reply,
 		}
 	}
 }
@@ -432,6 +434,7 @@ impl From<MessageType> for DisMessageType {
 			MessageType::ChannelFollowAdd => ChannelFollowAdd,
 			MessageType::GuildDiscoveryDisqualified => GuildDiscoveryDisqualified,
 			MessageType::GuildDiscoveryRequalified => GuildDiscoveryRequalified,
+			MessageType::Reply => Reply,
 		}
 	}
 }
@@ -573,10 +576,14 @@ impl From<&ServerMessage> for DisMessage {
 			mention_everyone: Default::default(),
 			mention_roles: Default::default(),
 			mentions: Default::default(),
-			reference: Default::default(),
+			stickers: Default::default(),
 			tts: Default::default(),
 			webhook_id: Default::default(),
 			pinned: Default::default(),
+
+			// TODO: support replies!
+			reference: Default::default(),
+			referenced_message: Default::default(),
 		}
 	}
 }
@@ -697,10 +704,14 @@ impl From<&DirectMessage> for DisMessage {
 			mention_everyone: Default::default(),
 			mention_roles: Default::default(),
 			mentions: Default::default(),
-			reference: Default::default(),
+			stickers: Default::default(),
 			tts: Default::default(),
 			webhook_id: Default::default(),
 			pinned: Default::default(),
+
+			// TODO: support replies!
+			reference: Default::default(),
+			referenced_message: Default::default(),
 		}
 	}
 }
