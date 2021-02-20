@@ -1,6 +1,7 @@
 [![Crate release version](https://flat.badgen.net/crates/v/passcod-accord)](https://crates.io/crates/passcod-accord)
 [![Crate license: CC BY-NC-SA 4.0](https://flat.badgen.net/badge/license/CC%20BY-NC-SA%204.0)](./LICENSE)
 ![MSRV: latest stable](https://flat.badgen.net/badge/MSRV/latest%20stable/orange)
+[![Uses Caretaker Maintainership](https://flat.badgen.net/badge/Caretaker/Maintainership%20👥%20/purple)](https://gist.github.com/passcod/7332390db1813f9bccb07e5cf3a9649b)
 
 # ![Accord: interfaces between discord and a local http server](./res/pitch.png)
 
@@ -20,6 +21,7 @@
   + What if I want to use it in a commercial context?
     * [See the top of the LICENSE file](./LICENSE)
 - Contribute: you can!
+  + This project uses [Caretaker Maintainership](./CARETAKERS.md).
   + Areas in need of love: everywhere.
   + More descriptive erroring and warnings would help lots!
   + Basic response timing stats could be helpful!
