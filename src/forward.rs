@@ -1,9 +1,9 @@
-use std::{error::Error, fmt::Debug, io::Read, str::FromStr, sync::Arc};
+use std::{error::Error, str::FromStr, sync::Arc};
 
 use async_channel::{Receiver, Sender};
 use async_std::{prelude::StreamExt, task::spawn};
-use futures::io::{AsyncBufReadExt, AsyncRead, BufReader};
-use isahc::{http::Response, ResponseExt};
+use futures::io::{AsyncBufReadExt, BufReader};
+use isahc::{http::Response, AsyncBody, AsyncReadResponseExt};
 use tracing::{debug, error, info, trace, warn};
 
 use twilight_cache_inmemory::{InMemoryCache, ResourceType};
@@ -45,7 +45,7 @@ impl Forward {
 					.unwrap_or(mime::APPLICATION_OCTET_STREAM);
 
 				if content_type == mime::APPLICATION_JSON {
-					let presence: raccord::Presence = connecting_res.json()?;
+					let presence: raccord::Presence = connecting_res.json().await?;
 
 					update_status = Some(UpdateStatusInfo {
 						afk: presence.afk.unwrap_or(true),
@@ -232,8 +232,8 @@ pub async fn try_event(
 	Ok(())
 }
 
-async fn handle_response<T: Debug + Read + AsyncRead + Unpin>(
-	mut res: Response<T>,
+async fn handle_response(
+	mut res: Response<AsyncBody>,
 	player: Sender<Stage>,
 	from_server: Option<GuildId>,
 	from_channel: Option<ChannelId>,
@@ -308,7 +308,7 @@ async fn handle_response<T: Debug + Read + AsyncRead + Unpin>(
 
 			if has_content_length {
 				info!("response has content-length, parsing single act");
-				let act: Act = res.json()?;
+				let act: Act = res.json().await?;
 				trace!("parsed act: {:?}", &act);
 				player
 					.send(Stage {
@@ -339,7 +339,7 @@ async fn handle_response<T: Debug + Read + AsyncRead + Unpin>(
 			}
 		}
 		(mime::TEXT, mime::PLAIN) => {
-			let content = res.text()?;
+			let content = res.text().await?;
 			let header_channel = res
 				.headers()
 				.get("accord-channel-id")
