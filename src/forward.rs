@@ -1,10 +1,12 @@
+use std::{error::Error, fmt::Debug, io::Read, str::FromStr, sync::Arc};
+
 use async_channel::{Receiver, Sender};
 use async_std::{prelude::StreamExt, task::spawn};
 use futures::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use isahc::{http::Response, ResponseExt};
-use std::{error::Error, fmt::Debug, io::Read, str::FromStr, sync::Arc};
 use tracing::{debug, error, info, trace, warn};
-use twilight_cache_inmemory::{EventType, InMemoryCache};
+
+use twilight_cache_inmemory::{InMemoryCache, ResourceType};
 use twilight_gateway::{cluster::Cluster, Event};
 use twilight_http::Client as HttpClient;
 use twilight_model::{
@@ -69,6 +71,7 @@ impl Forward {
 							vec![Activity {
 								application_id: None,
 								assets: None,
+								buttons: Vec::new(),
 								created_at: None,
 								details: None,
 								emoji: None,
@@ -92,7 +95,10 @@ impl Forward {
 		// TODO: env var control for intents (notably for privileged intents)
 		let mut config = Cluster::builder(
 			&token,
-			Intents::DIRECT_MESSAGES | Intents::GUILD_MESSAGES | Intents::GUILD_MEMBERS,
+			Intents::DIRECT_MESSAGES
+				| Intents::GUILD_MESSAGES
+				| Intents::GUILD_MEMBERS
+				| Intents::GUILD_MESSAGE_REACTIONS,
 		);
 
 		if let Some(presence) = update_status {
@@ -109,16 +115,7 @@ impl Forward {
 		let http = HttpClient::new(&token);
 
 		let cache = InMemoryCache::builder()
-			.event_types(
-				EventType::MESSAGE_CREATE
-					| EventType::MESSAGE_DELETE
-					| EventType::MESSAGE_DELETE_BULK
-					| EventType::MESSAGE_UPDATE
-					| EventType::MEMBER_ADD
-					| EventType::MEMBER_CHUNK
-					| EventType::MEMBER_UPDATE
-					| EventType::MEMBER_REMOVE,
-			)
+			.resource_types(ResourceType::all())
 			.build();
 
 		Ok(Self {

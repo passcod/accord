@@ -252,13 +252,14 @@ impl From<&Member> for PartialMember {
 			roles: rac
 				.roles
 				.as_ref()
-				.map(|v| v.into_iter().map(|r| RoleId(*r)).collect())
+				.map(|v| v.iter().map(|r| RoleId(*r)).collect())
 				.unwrap_or_default(),
 			nick: rac.pseudonym.clone(),
 
 			deaf: Default::default(),
 			mute: Default::default(),
 			joined_at: Default::default(),
+			premium_since: Default::default(),
 		}
 	}
 }
@@ -322,6 +323,7 @@ impl MessageFlag {
 		flags
 	}
 
+	#[allow(clippy::wrong_self_convention)] // it _is_ by reference... kinda
 	pub fn to_discord(rac: &[Self]) -> Option<DisMessageFlags> {
 		if rac.is_empty() {
 			return None;
@@ -384,6 +386,9 @@ pub enum MessageType {
 	GuildDiscoveryDisqualified,
 	GuildDiscoveryRequalified,
 	Reply,
+	GuildDiscoveryGracePeriodInitialWarning,
+	GuildDiscoveryGracePeriodFinalWarning,
+	GuildInviteReminder,
 }
 
 impl Default for MessageType {
@@ -412,6 +417,13 @@ impl From<DisMessageType> for MessageType {
 			DisMessageType::GuildDiscoveryDisqualified => GuildDiscoveryDisqualified,
 			DisMessageType::GuildDiscoveryRequalified => GuildDiscoveryRequalified,
 			DisMessageType::Reply => Reply,
+			DisMessageType::GuildDiscoveryGracePeriodInitialWarning => {
+				GuildDiscoveryGracePeriodInitialWarning
+			}
+			DisMessageType::GuildDiscoveryGracePeriodFinalWarning => {
+				GuildDiscoveryGracePeriodFinalWarning
+			}
+			DisMessageType::GuildInviteReminder => GuildInviteReminder,
 		}
 	}
 }
@@ -435,6 +447,13 @@ impl From<MessageType> for DisMessageType {
 			MessageType::GuildDiscoveryDisqualified => GuildDiscoveryDisqualified,
 			MessageType::GuildDiscoveryRequalified => GuildDiscoveryRequalified,
 			MessageType::Reply => Reply,
+			MessageType::GuildDiscoveryGracePeriodInitialWarning => {
+				GuildDiscoveryGracePeriodInitialWarning
+			}
+			MessageType::GuildDiscoveryGracePeriodFinalWarning => {
+				GuildDiscoveryGracePeriodFinalWarning
+			}
+			MessageType::GuildInviteReminder => GuildInviteReminder,
 		}
 	}
 }

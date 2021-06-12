@@ -120,7 +120,7 @@ async fn send_to_discord(
 				.or(default_server_id)
 				.ok_or(error::MissingServer)?;
 
-			let mut add = http.add_role(server_id, UserId(user_id), RoleId(role_id));
+			let mut add = http.add_guild_member_role(server_id, UserId(user_id), RoleId(role_id));
 
 			if let Some(text) = reason {
 				add = add.reason(text)?;
