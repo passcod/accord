@@ -18,7 +18,7 @@ use twilight_gateway::Event;
 #[async_std::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 	tracing_log::LogTracer::init()?;
-	let rustlog = env::var("RUST_LOG").unwrap_or(String::from("info,accord=trace"));
+	let rustlog = env::var("RUST_LOG").unwrap_or_else(|_| String::from("info,accord=trace"));
 	if rustlog.split(',').any(|p| p == "pretty") {
 		let subscriber = FmtSubscriber::builder()
 			.pretty()

@@ -9,7 +9,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 	tracing_log::LogTracer::init()?;
 	let subscriber = FmtSubscriber::builder()
 		.with_env_filter(EnvFilter::new(
-			env::var("RUST_LOG").unwrap_or(String::from("info")),
+			env::var("RUST_LOG").unwrap_or_else(|_| String::from("info")),
 		))
 		.finish();
 	tracing::subscriber::set_global_default(subscriber)?;

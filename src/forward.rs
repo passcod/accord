@@ -322,24 +322,22 @@ async fn handle_response<T: Debug + Read + AsyncRead + Unpin>(
 					.await?;
 			} else {
 				info!("response has no content-length, streaming multiple acts");
+
 				let mut lines = BufReader::new(res.into_body()).lines();
-				loop {
-					if let Some(line) = lines.next().await {
-						let line = line?;
-						trace!("got line: {:?}", line);
-						let act: Act = serde_json::from_str(line.trim())?;
-						trace!("parsed act: {:?}", &act);
-						player
-							.send(Stage {
-								act,
-								default_server_id,
-								default_channel_id,
-							})
-							.await?;
-					} else {
-						break;
-					}
+				while let Some(line) = lines.next().await {
+					let line = line?;
+					trace!("got line: {:?}", line);
+					let act: Act = serde_json::from_str(line.trim())?;
+					trace!("parsed act: {:?}", &act);
+					player
+						.send(Stage {
+							act,
+							default_server_id,
+							default_channel_id,
+						})
+						.await?;
 				}
+
 				info!("done streaming");
 			}
 		}
