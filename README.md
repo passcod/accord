@@ -1,3 +1,5 @@
+### Archived: was made before slash commands, now rather outdated. Idea was interesting and it did power at least one bot for ~2 years, but it's time to retire it.
+
 [![Crate release version](https://flat.badgen.net/crates/v/passcod-accord)](https://crates.io/crates/passcod-accord)
 [![Crate license: CC BY-NC-SA 4.0](https://flat.badgen.net/badge/license/CC%20BY-NC-SA%204.0)](./LICENSE)
 ![MSRV: latest stable](https://flat.badgen.net/badge/MSRV/latest%20stable/orange)
